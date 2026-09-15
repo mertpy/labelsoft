@@ -1,12 +1,9 @@
 from PyQt5.QtWidgets import QDialog, QVBoxLayout, QHBoxLayout, QComboBox, QLabel, QPushButton, QLineEdit, QMessageBox
 
 class ClassSelectionDialog(QDialog):
-    """
-    Poligon çizimi bittiğinde sınıf seçmek veya yeni sınıf eklemek için açılan pencere.
-    """
     def __init__(self, classes, save_classes_cb, parent=None):
         super().__init__(parent)
-        self.classes = classes  # Referans olarak gelir, güncellendiğinde ana sözlük de güncellenir
+        self.classes = classes
         self.save_classes_cb = save_classes_cb
         self.setWindowTitle("Sınıf Seç")
         self.resize(300, 150)
@@ -93,9 +90,6 @@ class ClassSelectionDialog(QDialog):
 
 
 class ClassChangeDialog(QDialog):
-    """
-    Önceden çizilmiş bir çokgenin sınıfını değiştirmek için açılan pencere.
-    """
     def __init__(self, current_cid, classes, save_classes_cb, parent=None):
         super().__init__(parent)
         self.classes = classes
@@ -108,7 +102,6 @@ class ClassChangeDialog(QDialog):
         self.combo = QComboBox()
         self.update_combo()
         
-        # Mevcut sınıfı seçili yap
         idx = self.combo.findData(current_cid)
         if idx >= 0:
             self.combo.setCurrentIndex(idx)

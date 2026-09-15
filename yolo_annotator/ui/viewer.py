@@ -1,14 +1,12 @@
 import math
 from PyQt5.QtWidgets import QGraphicsView, QGraphicsScene, QGraphicsPixmapItem, QMessageBox
-from PyQt5.QtCore import Qt, QRectF
+from PyQt5.QtCore import Qt, QRectF, QPointF
 from PyQt5.QtGui import QPainter, QPen, QBrush, QPolygonF
 
 from ..models.polygon_item import PolygonAnnotation
+from ..models.box_item import BoxAnnotation
 
 class Viewer(QGraphicsView):
-    """
-    Görüntüleme, yakınlaştırma, kaydırma ve çizim işlemlerini yöneten ana görünüm sınıfı.
-    """
     def __init__(self, parent=None):
         super().__init__(parent)
         self.scene = QGraphicsScene(self)
@@ -18,16 +16,18 @@ class Viewer(QGraphicsView):
         self.setTransformationAnchor(QGraphicsView.AnchorUnderMouse)
         self.setResizeAnchor(QGraphicsView.AnchorUnderMouse)
         
-        self.mode = 'draw'  # 'draw' veya 'edit'
+        # Mouse takibi (crosshair için)
+        self.setMouseTracking(True)
+        
+        self.mode = 'draw'  # 'draw', 'draw_box' veya 'edit'
         self.pixmap_item = None
         self.img_width = 0
         self.img_height = 0
         
-        # Panning Değişkenleri
         self._is_panning = False
         self._pan_start = None
         
-        # Drawing Değişkenleri
+        # Drawing Polygon
         self.current_points = []
         self.temp_lines = []
         self.temp_points = []
@@ -35,13 +35,34 @@ class Viewer(QGraphicsView):
         self.floating_line = None
         self.snap_threshold = 4
         
-        # Callback'ler
+        # Drawing Box
+        self.box_start_pt = None
+        self.temp_box_item = None
+        
+        # Crosshair
+        pen = QPen(Qt.white, 1, Qt.DashLine)
+        self.crosshair_v = self.scene.addLine(0,0,0,0, pen)
+        self.crosshair_h = self.scene.addLine(0,0,0,0, pen)
+        self.crosshair_v.hide()
+        self.crosshair_h.hide()
+        
         self.on_polygon_completed = None
+        self.on_box_completed = None
         self.on_scene_changed = None
-        self.on_right_click_polygon = None
+        self.on_right_click_item = None
 
     def set_image(self, pixmap):
         self.scene.clear()
+        
+        # Re-add crosshairs because clear() deleted them
+        pen = QPen(Qt.white, 1, Qt.DashLine)
+        self.crosshair_v = self.scene.addLine(0,0,0,0, pen)
+        self.crosshair_h = self.scene.addLine(0,0,0,0, pen)
+        self.crosshair_v.setZValue(9999) # Always on top
+        self.crosshair_h.setZValue(9999)
+        self.crosshair_v.hide()
+        self.crosshair_h.hide()
+        
         self.pixmap_item = QGraphicsPixmapItem(pixmap)
         self.scene.addItem(self.pixmap_item)
         
@@ -61,6 +82,16 @@ class Viewer(QGraphicsView):
             zoomFactor = zoomOutFactor
             
         self.scale(zoomFactor, zoomFactor)
+        
+    def update_crosshair(self, scene_pos):
+        if self.pixmap_item and 0 <= scene_pos.x() <= self.img_width and 0 <= scene_pos.y() <= self.img_height:
+            self.crosshair_v.setLine(scene_pos.x(), 0, scene_pos.x(), self.img_height)
+            self.crosshair_h.setLine(0, scene_pos.y(), self.img_width, scene_pos.y())
+            self.crosshair_v.show()
+            self.crosshair_h.show()
+        else:
+            self.crosshair_v.hide()
+            self.crosshair_h.hide()
 
     def mousePressEvent(self, event):
         if event.button() == Qt.MiddleButton:
@@ -72,10 +103,15 @@ class Viewer(QGraphicsView):
         if event.button() == Qt.LeftButton:
             if self.mode == 'draw':
                 self.handle_draw_press(event)
+            elif self.mode == 'draw_box':
+                self.handle_box_press(event)
             elif self.mode == 'edit':
                 super().mousePressEvent(event)
                 
     def mouseMoveEvent(self, event):
+        scene_pos = self.mapToScene(event.pos())
+        self.update_crosshair(scene_pos)
+        
         if self._is_panning:
             delta = event.pos() - self._pan_start
             self.horizontalScrollBar().setValue(self.horizontalScrollBar().value() - delta.x())
@@ -85,6 +121,8 @@ class Viewer(QGraphicsView):
             
         if self.mode == 'draw' and self.current_points:
             self.handle_draw_move(event)
+        elif self.mode == 'draw_box' and self.box_start_pt is not None:
+            self.handle_box_move(event)
             
         super().mouseMoveEvent(event)
 
@@ -93,8 +131,18 @@ class Viewer(QGraphicsView):
             self._is_panning = False
             self.viewport().setCursor(Qt.ArrowCursor)
             return
+        
+        if event.button() == Qt.LeftButton and self.mode == 'draw_box' and self.box_start_pt is not None:
+            self.handle_box_release(event)
+            
         super().mouseReleaseEvent(event)
 
+    def leaveEvent(self, event):
+        self.crosshair_v.hide()
+        self.crosshair_h.hide()
+        super().leaveEvent(event)
+
+    # --- POLYGON DRAWING ---
     def handle_draw_press(self, event):
         if not self.pixmap_item: return
         scene_pos = self.mapToScene(event.pos())
@@ -145,7 +193,6 @@ class Viewer(QGraphicsView):
             self.first_point_item.setBrush(QBrush(Qt.red))
 
     def undo_last_point(self):
-        """Çizim sırasında son eklenen noktayı geri alır (Ctrl+Z)"""
         if not self.current_points:
             return
             
@@ -166,7 +213,6 @@ class Viewer(QGraphicsView):
                 self.scene.removeItem(self.floating_line)
                 self.floating_line = None
         else:
-            # Floating line update
             cursor_pos = self.mapFromGlobal(self.cursor().pos())
             scene_pos = self.mapToScene(cursor_pos)
             last_pt = self.current_points[-1]
@@ -183,7 +229,37 @@ class Viewer(QGraphicsView):
         if self.on_polygon_completed:
             self.on_polygon_completed(poly)
 
+    # --- BOX DRAWING ---
+    def handle_box_press(self, event):
+        if not self.pixmap_item: return
+        scene_pos = self.mapToScene(event.pos())
+        scene_pos.setX(max(0, min(self.img_width, scene_pos.x())))
+        scene_pos.setY(max(0, min(self.img_height, scene_pos.y())))
+        
+        self.box_start_pt = scene_pos
+        self.temp_box_item = self.scene.addRect(QRectF(scene_pos, scene_pos), QPen(Qt.red, 2), QBrush(Qt.transparent))
+        
+    def handle_box_move(self, event):
+        if not self.temp_box_item: return
+        scene_pos = self.mapToScene(event.pos())
+        scene_pos.setX(max(0, min(self.img_width, scene_pos.x())))
+        scene_pos.setY(max(0, min(self.img_height, scene_pos.y())))
+        
+        rect = QRectF(self.box_start_pt, scene_pos).normalized()
+        self.temp_box_item.setRect(rect)
+        
+    def handle_box_release(self, event):
+        if not self.temp_box_item: return
+        
+        rect = self.temp_box_item.rect()
+        self.cancel_drawing()
+        
+        if rect.width() > 2 and rect.height() > 2:
+            if self.on_box_completed:
+                self.on_box_completed(rect)
+
     def cancel_drawing(self):
+        # Polygon cancels
         for item in self.temp_lines:
             self.scene.removeItem(item)
         for item in self.temp_points:
@@ -196,27 +272,31 @@ class Viewer(QGraphicsView):
         self.temp_lines = []
         self.temp_points = []
         self.first_point_item = None
+        
+        # Box cancels
+        self.box_start_pt = None
+        if self.temp_box_item:
+            self.scene.removeItem(self.temp_box_item)
+            self.temp_box_item = None
 
     def keyPressEvent(self, event):
-        # Ctrl+Z ile geri alma
         if event.key() == Qt.Key_Z and (event.modifiers() & Qt.ControlModifier):
             if self.mode == 'draw':
                 self.undo_last_point()
                 return
 
-        if event.key() == Qt.Key_Escape and self.mode == 'draw':
+        if event.key() == Qt.Key_Escape and self.mode in ['draw', 'draw_box']:
             self.cancel_drawing()
             
         elif event.key() == Qt.Key_Delete and self.mode == 'edit':
             selected = self.scene.selectedItems()
-            deleted_poly = False
+            deleted_item = False
             for item in selected:
-                # VertexHandle silinmesini engellemek için sadece PolygonAnnotation'ları siliyoruz
-                if isinstance(item, PolygonAnnotation):
+                if isinstance(item, (PolygonAnnotation, BoxAnnotation)):
                     self.scene.removeItem(item)
-                    deleted_poly = True
+                    deleted_item = True
             
-            if deleted_poly and self.on_scene_changed:
+            if deleted_item and self.on_scene_changed:
                 self.on_scene_changed()
                     
         super().keyPressEvent(event)

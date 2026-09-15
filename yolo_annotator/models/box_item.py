@@ -1,13 +1,16 @@
 import random
-from PyQt5.QtWidgets import QGraphicsItem, QGraphicsPolygonItem, QGraphicsEllipseItem
-from PyQt5.QtCore import Qt, QPointF
+from PyQt5.QtWidgets import QGraphicsItem, QGraphicsRectItem, QGraphicsEllipseItem
+from PyQt5.QtCore import Qt, QRectF
 from PyQt5.QtGui import QColor, QBrush, QPen
 
-class VertexHandle(QGraphicsEllipseItem):
-    def __init__(self, index, polygon_item, parent=None):
+class BoxHandle(QGraphicsEllipseItem):
+    """
+    Kutunun köşelerini temsil eder ve yeniden boyutlandırmayı sağlar.
+    """
+    def __init__(self, position_type, box_item, parent=None):
         super().__init__(-4, -4, 8, 8, parent)
-        self.index = index
-        self.polygon_item = polygon_item
+        self.position_type = position_type # 'TL', 'TR', 'BL', 'BR'
+        self.box_item = box_item
         
         self.setBrush(QBrush(Qt.white))
         self.setPen(QPen(Qt.black, 1))
@@ -28,28 +31,33 @@ class VertexHandle(QGraphicsEllipseItem):
 
     def itemChange(self, change, value):
         if change == QGraphicsItem.ItemPositionChange and self.scene():
-            self.polygon_item.update_vertex(self.index, value)
+            self.box_item.update_handle_position(self.position_type, value)
         elif change == QGraphicsItem.ItemPositionHasChanged:
-            self.polygon_item.notify_scene_changed()
+            self.box_item.notify_scene_changed()
             
         return super().itemChange(change, value)
 
 
-class PolygonAnnotation(QGraphicsPolygonItem):
-    def __init__(self, poly, class_id, class_name, on_right_click=None, parent=None):
-        super().__init__(poly, parent)
+class BoxAnnotation(QGraphicsRectItem):
+    """
+    Çizilen her bir kutuyu (Bounding Box) temsil eden sınıf.
+    """
+    def __init__(self, rect, class_id, class_name, on_right_click=None, parent=None):
+        super().__init__(rect, parent)
         self.class_id = class_id
         self.class_name = class_name
         self.on_right_click = on_right_click
         
         self.setFlag(QGraphicsItem.ItemIsSelectable, True)
         
+        # Sınıfa özel kalıcı rastgele renk oluştur
         self.base_color = self.get_color(class_name)
         
+        # Yarı saydam dolgu ve belirgin kenarlık
         self.setBrush(QBrush(QColor(self.base_color.red(), self.base_color.green(), self.base_color.blue(), 100)))
         self.setPen(QPen(self.base_color, 2, Qt.SolidLine))
         
-        self.handles = []
+        self.handles = {}
         self.create_handles()
         
     def get_color(self, name):
@@ -60,16 +68,37 @@ class PolygonAnnotation(QGraphicsPolygonItem):
         return QColor(r, g, b)
         
     def create_handles(self):
-        poly = self.polygon()
-        for i in range(poly.count()):
-            handle = VertexHandle(i, self, self)
-            handle.setPos(poly.at(i))
-            self.handles.append(handle)
+        positions = ['TL', 'TR', 'BL', 'BR']
+        for pos in positions:
+            handle = BoxHandle(pos, self, self)
+            self.handles[pos] = handle
+        self.update_handles_pos()
             
-    def update_vertex(self, index, new_pos):
-        poly = self.polygon()
-        poly.replace(index, new_pos)
-        self.setPolygon(poly)
+    def update_handles_pos(self):
+        rect = self.rect()
+        if 'TL' in self.handles: self.handles['TL'].setPos(rect.topLeft())
+        if 'TR' in self.handles: self.handles['TR'].setPos(rect.topRight())
+        if 'BL' in self.handles: self.handles['BL'].setPos(rect.bottomLeft())
+        if 'BR' in self.handles: self.handles['BR'].setPos(rect.bottomRight())
+        
+    def update_handle_position(self, pos_type, new_pos):
+        rect = self.rect()
+        if pos_type == 'TL':
+            rect.setTopLeft(new_pos)
+        elif pos_type == 'TR':
+            rect.setTopRight(new_pos)
+        elif pos_type == 'BL':
+            rect.setBottomLeft(new_pos)
+        elif pos_type == 'BR':
+            rect.setBottomRight(new_pos)
+            
+        self.setRect(rect.normalized())
+        
+        normalized = self.rect()
+        if pos_type != 'TL': self.handles['TL'].setPos(normalized.topLeft())
+        if pos_type != 'TR': self.handles['TR'].setPos(normalized.topRight())
+        if pos_type != 'BL': self.handles['BL'].setPos(normalized.bottomLeft())
+        if pos_type != 'BR': self.handles['BR'].setPos(normalized.bottomRight())
         
     def notify_scene_changed(self):
         scene = self.scene()
@@ -88,13 +117,14 @@ class PolygonAnnotation(QGraphicsPolygonItem):
         self.notify_scene_changed()
 
     def itemChange(self, change, value):
+        # Öğe seçildiğinde (Edit modunda) kenarlığı belirgin yap ve tutamaçları göster
         if change == QGraphicsItem.ItemSelectedChange:
             if value:
                 self.setPen(QPen(Qt.white, 3, Qt.DashLine))
-                for h in self.handles: h.show()
+                for h in self.handles.values(): h.show()
             else:
                 self.setPen(QPen(self.base_color, 2, Qt.SolidLine))
-                for h in self.handles: h.hide()
+                for h in self.handles.values(): h.hide()
         return super().itemChange(change, value)
         
     def contextMenuEvent(self, event):
