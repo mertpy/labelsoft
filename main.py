@@ -1,7 +1,7 @@
 import sys
 from PyQt5.QtWidgets import QApplication
 from yolo_annotator.ui.main_window import MainWindow
-#DENEME
+
 def main():
     app = QApplication(sys.argv)
     window = MainWindow()
