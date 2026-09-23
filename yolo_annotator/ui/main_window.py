@@ -1,10 +1,12 @@
+import math
 import os
-from PyQt5.QtWidgets import QMainWindow, QToolBar, QAction, QFileDialog, QMessageBox, QDialog
-from PyQt5.QtCore import Qt, QPointF, QRectF
+import json
+from PyQt5.QtWidgets import QMainWindow, QToolBar, QAction, QFileDialog, QMessageBox, QDialog, QStatusBar
+from PyQt5.QtCore import Qt, QPointF, QRectF, QTimer
 from PyQt5.QtGui import QPixmap, QPolygonF
 
 from .viewer import Viewer
-from .dialogs import ClassSelectionDialog, ClassChangeDialog
+from .dialogs import ClassSelectionDialog, ClassChangeDialog, CameraSettingsDialog
 from ..models.polygon_item import PolygonAnnotation
 from ..models.box_item import BoxAnnotation
 from ..utils.file_io import load_classes_txt, save_classes_txt
@@ -20,12 +22,25 @@ class MainWindow(QMainWindow):
         self.current_image_idx = -1
         self.classes = {}
         
+        self.camera_settings = {
+            'camera_height_m': 1.20,
+            'fov_h_deg': 82,
+            'ref_width': 3840.0,
+            'ref_height': 2160.0
+        }
+        
         self.viewer = Viewer(self)
         self.viewer.on_polygon_completed = self.on_polygon_completed
         self.viewer.on_box_completed = self.on_box_completed
-        self.viewer.on_scene_changed = self.save_labels
+        self.viewer.on_scene_changed = self.on_scene_changed_handler
         self.viewer.on_right_click_item = self.on_right_click_item
+        self.viewer.on_selection_changed = self.calculate_and_display_dimensions
+        self.viewer.on_drawing_progress = self.on_drawing_progress_handler
         self.setCentralWidget(self.viewer)
+        
+        self.status_bar = QStatusBar()
+        self.setStatusBar(self.status_bar)
+        self.status_bar.showMessage("Çizim bekleniyor...")
         
         self.init_toolbar()
         
@@ -82,6 +97,86 @@ class MainWindow(QMainWindow):
         btn_del_img.triggered.connect(self.delete_current_image)
         toolbar.addAction(btn_del_img)
         
+        toolbar.addSeparator()
+        
+        btn_camera = QAction("⚙️ Kamera Ayarları", self)
+        btn_camera.triggered.connect(self.open_camera_settings)
+        toolbar.addAction(btn_camera)
+        
+    def open_camera_settings(self):
+        dialog = CameraSettingsDialog(self.camera_settings, self)
+        if dialog.exec_() == QDialog.Accepted:
+            self.camera_settings.update(dialog.get_settings())
+            # Yeniden hesapla
+            selected = self.viewer.scene.selectedItems()
+            if selected:
+                for item in selected:
+                    if isinstance(item, (PolygonAnnotation, BoxAnnotation)):
+                        self.calculate_and_display_dimensions(item)
+                        break
+                        
+    def on_scene_changed_handler(self):
+        self.save_labels()
+        selected = self.viewer.scene.selectedItems()
+        if selected:
+            for item in selected:
+                if isinstance(item, (PolygonAnnotation, BoxAnnotation)):
+                    self.calculate_and_display_dimensions(item)
+                    break
+        else:
+            self.calculate_and_display_dimensions(None)
+            
+    def on_drawing_progress_handler(self, rect):
+        if not rect:
+            self.status_bar.showMessage("Çizim bekleniyor...")
+            return
+            
+        px_w = rect.width()
+        px_h = rect.height()
+        
+        cam_h = self.camera_settings.get('camera_height_m', 0.90)
+        fov_deg = self.camera_settings.get('fov_h_deg', 120.0)
+        ref_w = self.camera_settings.get('ref_width', 3840.0)
+        
+        if ref_w <= 0: ref_w = 3840.0
+        
+        fov_rad = math.radians(fov_deg)
+        real_ground_width_m = 2 * cam_h * math.tan(fov_rad / 2)
+        m_per_px = real_ground_width_m / ref_w
+        
+        real_w_cm = (px_w * m_per_px) * 100
+        real_h_cm = (px_h * m_per_px) * 100
+        
+        msg = f"Çiziliyor... | Gerçek Boyut: {real_w_cm:.1f}x{real_h_cm:.1f} cm | Piksel: {int(px_w)}x{int(px_h)} px"
+        self.status_bar.showMessage(msg)
+            
+    def calculate_and_display_dimensions(self, item):
+        if not item:
+            self.status_bar.showMessage("Çizim bekleniyor...")
+            return
+            
+        rect = item.sceneBoundingRect()
+        px_w = rect.width()
+        px_h = rect.height()
+        
+        cam_h = self.camera_settings.get('camera_height_m', 1.60)
+        fov_deg = self.camera_settings.get('fov_h_deg', 70.0)
+        ref_w = self.camera_settings.get('ref_width', 3840.0)
+        
+        if ref_w <= 0: ref_w = 3840.0
+        
+        fov_rad = math.radians(fov_deg)
+        real_ground_width_m = 2 * cam_h * math.tan(fov_rad / 2)
+        m_per_px = real_ground_width_m / ref_w
+        
+        # Original scaling
+        real_w_cm = (px_w * m_per_px) * 100
+        real_h_cm = (px_h * m_per_px) * 100
+        
+        cname = item.class_name
+        msg = f"Seçilen: {cname} | Gerçek Boyut: {real_w_cm:.1f}x{real_h_cm:.1f} cm | Piksel: {int(px_w)}x{int(px_h)} px"
+        self.status_bar.showMessage(msg)
+        
     def set_mode(self, mode):
         self.viewer.mode = mode
         
@@ -99,26 +194,18 @@ class MainWindow(QMainWindow):
         if not folder: return
         
         self.dataset_dir = folder
-        images_dir = os.path.join(self.dataset_dir, 'images')
-        labels_dir = os.path.join(self.dataset_dir, 'labels')
-        
-        if not os.path.exists(images_dir):
-            QMessageBox.warning(self, "Hata", f"Seçilen dizinde 'images' klasörü bulunamadı!\nLütfen dataset ana dizinini seçin.")
-            return
-            
-        os.makedirs(labels_dir, exist_ok=True)
         self.classes = load_classes_txt(self.dataset_dir)
         
         supported_exts = ('.jpg', '.jpeg', '.png', '.bmp')
         self.image_files = []
-        for file in os.listdir(images_dir):
+        for file in os.listdir(self.dataset_dir):
             if file.lower().endswith(supported_exts):
-                self.image_files.append(os.path.join(images_dir, file))
+                self.image_files.append(os.path.join(self.dataset_dir, file))
                 
         self.image_files.sort()
         
         if not self.image_files:
-            QMessageBox.warning(self, "Bilgi", "images klasöründe resim bulunamadı.")
+            QMessageBox.warning(self, "Bilgi", "Seçilen klasörde resim bulunamadı.")
             return
             
         self.current_image_idx = 0
@@ -138,7 +225,7 @@ class MainWindow(QMainWindow):
             
         self.viewer.set_image(pixmap)
         self.load_labels()
-        self.fit_window()
+        QTimer.singleShot(50, self.fit_window)
         
         file_name = os.path.basename(path)
         self.setWindowTitle(f"YOLOv8 Etiketleme - {file_name} ({self.current_image_idx+1}/{len(self.image_files)})")
@@ -175,12 +262,11 @@ class MainWindow(QMainWindow):
                 QMessageBox.warning(self, "Hata", f"Fotoğraf silinemedi: {e}")
                 return
                 
-            labels_dir = os.path.join(self.dataset_dir, 'labels')
             base_name = os.path.splitext(os.path.basename(path))[0]
-            txt_path = os.path.join(labels_dir, f"{base_name}.txt")
-            if os.path.exists(txt_path):
+            json_path = os.path.join(self.dataset_dir, f"{base_name}.json")
+            if os.path.exists(json_path):
                 try:
-                    os.remove(txt_path)
+                    os.remove(json_path)
                 except Exception as e:
                     print(f"Etiket silinemedi: {e}")
                     
@@ -233,98 +319,102 @@ class MainWindow(QMainWindow):
         if not hasattr(self, 'current_image_path') or not self.dataset_dir:
             return
         
-        labels_dir = os.path.join(self.dataset_dir, 'labels')
         base_name = os.path.splitext(os.path.basename(self.current_image_path))[0]
-        txt_path = os.path.join(labels_dir, f"{base_name}.txt")
+        json_path = os.path.join(self.dataset_dir, f"{base_name}.json")
         
         items = self.viewer.scene.items()
         annotations = [it for it in items if isinstance(it, (PolygonAnnotation, BoxAnnotation))]
         
         if not annotations:
-            if os.path.exists(txt_path):
-                os.remove(txt_path)
+            if os.path.exists(json_path):
+                os.remove(json_path)
             return
             
-        with open(txt_path, 'w', encoding='utf-8') as f:
-            for item in annotations:
-                cid = item.class_id
+        data = {
+            "version": "5.0.0",
+            "flags": {},
+            "shapes": [],
+            "imagePath": os.path.basename(self.current_image_path),
+            "imageData": None,
+            "imageHeight": int(self.viewer.img_height),
+            "imageWidth": int(self.viewer.img_width)
+        }
+            
+        for item in annotations:
+            shape = {
+                "label": item.class_name,
+                "points": [],
+                "group_id": None,
+                "shape_type": "",
+                "flags": {}
+            }
+            
+            if isinstance(item, PolygonAnnotation):
+                shape["shape_type"] = "polygon"
+                poly = item.polygon()
+                for i in range(poly.count()):
+                    pt = item.mapToScene(poly.at(i))
+                    shape["points"].append([pt.x(), pt.y()])
                 
-                if isinstance(item, PolygonAnnotation):
-                    poly = item.polygon()
-                    coords = []
-                    for i in range(poly.count()):
-                        pt = poly.at(i)
-                        nx = pt.x() / self.viewer.img_width
-                        ny = pt.y() / self.viewer.img_height
-                        nx = max(0.0, min(1.0, nx))
-                        ny = max(0.0, min(1.0, ny))
-                        coords.extend([f"{nx:.6f}", f"{ny:.6f}"])
-                    f.write(f"{cid} " + " ".join(coords) + "\n")
-                    
-                elif isinstance(item, BoxAnnotation):
-                    rect = item.rect()
-                    cx = rect.center().x() / self.viewer.img_width
-                    cy = rect.center().y() / self.viewer.img_height
-                    w = rect.width() / self.viewer.img_width
-                    h = rect.height() / self.viewer.img_height
-                    
-                    cx = max(0.0, min(1.0, cx))
-                    cy = max(0.0, min(1.0, cy))
-                    w = max(0.0, min(1.0, w))
-                    h = max(0.0, min(1.0, h))
-                    
-                    f.write(f"{cid} {cx:.6f} {cy:.6f} {w:.6f} {h:.6f}\n")
+            elif isinstance(item, BoxAnnotation):
+                shape["shape_type"] = "rectangle"
+                rect = item.sceneBoundingRect()
+                shape["points"].append([rect.left(), rect.top()])
+                shape["points"].append([rect.right(), rect.bottom()])
+                
+            data["shapes"].append(shape)
+            
+        with open(json_path, 'w', encoding='utf-8') as f:
+            json.dump(data, f, indent=2, ensure_ascii=False)
 
     def load_labels(self):
         if not hasattr(self, 'current_image_path') or not self.dataset_dir:
             return
             
-        labels_dir = os.path.join(self.dataset_dir, 'labels')
         base_name = os.path.splitext(os.path.basename(self.current_image_path))[0]
-        txt_path = os.path.join(labels_dir, f"{base_name}.txt")
+        json_path = os.path.join(self.dataset_dir, f"{base_name}.json")
         
-        if not os.path.exists(txt_path):
+        if not os.path.exists(json_path):
             return
             
-        with open(txt_path, 'r', encoding='utf-8') as f:
-            for line in f:
-                parts = line.strip().split()
-                if len(parts) < 5: continue
-                
-                try:
-                    cid = int(parts[0])
-                except ValueError:
-                    continue
-                    
-                cname = self.classes.get(cid, f"Class {cid}")
-                
-                # Check if it's a Box (5 parts) or Polygon (>5 parts)
-                if len(parts) == 5:
-                    nx = float(parts[1])
-                    ny = float(parts[2])
-                    nw = float(parts[3])
-                    nh = float(parts[4])
-                    
-                    cx = nx * self.viewer.img_width
-                    cy = ny * self.viewer.img_height
-                    w = nw * self.viewer.img_width
-                    h = nh * self.viewer.img_height
-                    
-                    rect = QRectF(cx - w/2, cy - h/2, w, h)
-                    item = BoxAnnotation(rect, cid, cname, on_right_click=self.on_right_click_item)
-                    self.viewer.scene.addItem(item)
-                    
-                else: # Polygon
-                    points = []
-                    for i in range(1, len(parts), 2):
-                        if i+1 < len(parts):
-                            nx = float(parts[i])
-                            ny = float(parts[i+1])
-                            px = nx * self.viewer.img_width
-                            py = ny * self.viewer.img_height
-                            points.append(QPointF(px, py))
-                            
-                    if len(points) >= 3:
-                        poly = QPolygonF(points)
-                        item = PolygonAnnotation(poly, cid, cname, on_right_click=self.on_right_click_item)
-                        self.viewer.scene.addItem(item)
+        try:
+            with open(json_path, 'r', encoding='utf-8') as f:
+                data = json.load(f)
+        except Exception as e:
+            print(f"JSON okuma hatası: {e}")
+            return
+            
+        if "shapes" not in data:
+            return
+            
+        for shape in data["shapes"]:
+            cname = shape.get("label", "Unknown")
+            shape_type = shape.get("shape_type", "polygon")
+            points = shape.get("points", [])
+            
+            # Find class id for backward compatibility with dialogs
+            cid = -1
+            for k, v in self.classes.items():
+                if v == cname:
+                    cid = k
+                    break
+            
+            if cid == -1:
+                # Assign new random ID for missing class
+                cid = max(self.classes.keys(), default=-1) + 1
+                self.classes[cid] = cname
+                self.save_classes()
+            
+            if shape_type == "rectangle" and len(points) >= 2:
+                xmin, ymin = points[0]
+                xmax, ymax = points[1]
+                w = xmax - xmin
+                h = ymax - ymin
+                rect = QRectF(xmin, ymin, w, h)
+                item = BoxAnnotation(rect, cid, cname, on_right_click=self.on_right_click_item)
+                self.viewer.scene.addItem(item)
+            elif shape_type == "polygon" and len(points) >= 3:
+                qpoints = [QPointF(pt[0], pt[1]) for pt in points]
+                poly = QPolygonF(qpoints)
+                item = PolygonAnnotation(poly, cid, cname, on_right_click=self.on_right_click_item)
+                self.viewer.scene.addItem(item)

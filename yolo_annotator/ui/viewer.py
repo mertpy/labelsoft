@@ -50,6 +50,19 @@ class Viewer(QGraphicsView):
         self.on_box_completed = None
         self.on_scene_changed = None
         self.on_right_click_item = None
+        self.on_selection_changed = None
+        self.on_drawing_progress = None
+        
+        self.scene.selectionChanged.connect(self.handle_selection_changed)
+
+    def handle_selection_changed(self):
+        if self.on_selection_changed:
+            selected = self.scene.selectedItems()
+            for item in selected:
+                if isinstance(item, (PolygonAnnotation, BoxAnnotation)):
+                    self.on_selection_changed(item)
+                    return
+            self.on_selection_changed(None)
 
     def set_image(self, pixmap):
         self.scene.clear()
@@ -191,6 +204,11 @@ class Viewer(QGraphicsView):
         else:
             self.first_point_item.setRect(self.current_points[0].x()-2, self.current_points[0].y()-2, 4, 4)
             self.first_point_item.setBrush(QBrush(Qt.red))
+            
+        if self.on_drawing_progress:
+            pts = self.current_points + [scene_pos]
+            poly = QPolygonF(pts)
+            self.on_drawing_progress(poly.boundingRect())
 
     def undo_last_point(self):
         if not self.current_points:
@@ -247,6 +265,8 @@ class Viewer(QGraphicsView):
         
         rect = QRectF(self.box_start_pt, scene_pos).normalized()
         self.temp_box_item.setRect(rect)
+        if self.on_drawing_progress:
+            self.on_drawing_progress(rect)
         
     def handle_box_release(self, event):
         if not self.temp_box_item: return
@@ -278,6 +298,9 @@ class Viewer(QGraphicsView):
         if self.temp_box_item:
             self.scene.removeItem(self.temp_box_item)
             self.temp_box_item = None
+            
+        if self.on_drawing_progress:
+            self.on_drawing_progress(None)
 
     def keyPressEvent(self, event):
         if event.key() == Qt.Key_Z and (event.modifiers() & Qt.ControlModifier):

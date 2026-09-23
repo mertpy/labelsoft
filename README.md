@@ -1,23 +1,31 @@
-# YOLOv8 Annotator
+# YOLO & LabelMe JSON Annotator
 
-A lightweight, fast, and feature-rich Python annotation tool built with PyQt5. It is designed to create datasets for **YOLOv8 Instance Segmentation (Polygons)** and **YOLO Bounding Box Object Detection** effortlessly.
+A lightweight, fast, and feature-rich Python annotation tool built with PyQt5. This tool is designed to effortlessly create datasets for **Instance Segmentation (Polygons)** and **Object Detection (Bounding Boxes)**. It saves annotations directly in the universally recognized **LabelMe JSON** format, making it incredibly easy to integrate into modern computer vision pipelines.
 
-## ✨ Features
+## ✨ Key Features
 
-- **Dual Annotation Modes:** Draw both Polygons (for segmentation) and Bounding Boxes (for detection) on the same image.
-- **Auto-Save in YOLO Format:** Annotations are automatically saved into a `.txt` file following the standard YOLO format:
-  - Bounding Boxes: `class_id x_center y_center width height`
-  - Polygons: `class_id x1 y1 x2 y2 ...`
-- **Edit Mode:** Easily modify existing annotations. Drag the corner handles of a bounding box to resize it, or drag the vertices of a polygon to reshape it.
-- **Crosshair:** Full-screen vertical and horizontal crosshairs that follow the mouse cursor to help with precise point alignment.
-- **Undo Support:** Made a mistake while drawing a polygon? Press `Ctrl+Z` to undo the last point instantly.
-- **Quick Class Change:** Right-click on any existing annotation in Edit Mode to quickly change its class label or add a new class.
-- **Delete Annotations:** Select an annotation and press the `Delete` key to remove it from the image and the text file simultaneously.
-- **Delete Images:** Safely delete an image and its corresponding label file directly from the toolbar.
+- **Direct Folder Access (No strict hierarchies):** Just open any folder containing your images. The application reads images directly and saves the `.json` files right next to them—no need for separate `images` or `labels` subdirectories!
+- **LabelMe JSON Architecture:** Annotations are stored in the exact format used by the original LabelMe software (`shape_type: polygon` and `shape_type: rectangle`) with real pixel coordinates.
+- **Dual Drawing Modes:** 
+  - **Polygon (W):** Click around objects to create segmentation masks.
+  - **Bounding Box (B):** Click and drag to create detection boxes instantly.
+- **Advanced Edit Mode (E):**
+  - Click on a shape's center to drag and move the entire annotation.
+  - Drag the corner handles of a bounding box to resize it.
+  - Drag the vertices of a polygon to reshape it.
+  - Right-click any shape to quickly change its class label.
+  - Press `Delete` to remove the selected annotation.
+- **Real-World Dimension Calculator:** 
+  - Open the **⚙️ Kamera Ayarları (Camera Settings)** from the toolbar to input your camera's Height, FOV, and Resolution. 
+  - The status bar at the bottom will **live-calculate** the real-world dimensions (in cm) and pixel size (in px) of your shape while you are drawing or selecting it!
+- **Crosshair Guides:** Full-screen vertical and horizontal crosshairs that follow your mouse cursor to help with precise point alignment.
+- **Auto-Fit & Easy Navigation:** Every new image automatically scales to fit your screen. Navigate seamlessly with `A` (Prev) and `D` (Next) keys.
+- **Undo Support:** Press `Ctrl+Z` to undo the last drawn point while creating a polygon.
+- **Safe Deletion:** Click the Trash icon in the toolbar to safely delete an image **and** its corresponding `.json` label file from your disk.
 
 ## 🚀 Prerequisites
 
-Make sure you have Python 3 installed. The only dependency is `PyQt5`.
+Make sure you have Python 3 installed. The only requirement is `PyQt5`.
 
 ```bash
 pip install PyQt5
@@ -25,21 +33,20 @@ pip install PyQt5
 
 ## 🛠️ Usage
 
-1. **Run the Application:**
+1. **Start the Application:**
    ```bash
    python3 main.py
    ```
 
 2. **Select Dataset Directory:**
    Click the **📂 Klasör Seç (Select Folder)** button.
-   You must select a root directory that contains an `images` folder (e.g., `my_dataset/images`). 
-   The application will automatically create a `labels` folder and a `classes.txt` file in the root directory if they don't exist.
+   Choose the folder where your images are located (e.g., `Desktop/my_dataset`). The application will scan for images immediately.
 
-3. **Annotate:**
-   - Use the toolbar or shortcuts to switch between drawing modes.
-   - For **Polygons**, click around the object to add points. Clicking near the first point completes the polygon.
+3. **Annotate Your Images:**
+   - Use the toolbar or shortcuts (`W`, `B`, `E`) to switch between drawing and editing modes.
+   - For **Polygons**, click around the object. Clicking near the first point (turns green) completes the polygon.
    - For **Bounding Boxes**, left-click and drag the mouse to draw a rectangle.
-   - Upon completing a shape, a dialog will appear allowing you to select or create a class label.
+   - Upon completing a shape, a dialog will appear allowing you to select an existing class or create a new one. Your classes are remembered in a local `classes.txt` file for convenience.
 
 ## ⌨️ Shortcuts
 
@@ -55,16 +62,15 @@ pip install PyQt5
 | `Right Click` | Change the class of the clicked annotation (In Edit Mode) |
 | `Esc` | Cancel current drawing |
 
-## 📁 Directory Structure
-When you select a folder, your dataset should look like this:
+## 📁 Output Structure Example
+
+When you annotate images, your folder will look like this:
 
 ```text
-dataset_root/
-├── images/           <-- (You must create this and put images here)
-│   ├── img1.jpg
-│   └── img2.jpg
-├── labels/           <-- (Auto-generated by the app)
-│   ├── img1.txt
-│   └── img2.txt
-└── classes.txt       <-- (Auto-generated by the app)
+my_dataset/
+├── img1.jpg
+├── img1.json         <-- (Auto-generated LabelMe JSON file)
+├── img2.jpg
+├── img2.json
+└── classes.txt       <-- (Stores your classes to remember them easily)
 ```

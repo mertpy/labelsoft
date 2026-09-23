@@ -175,3 +175,48 @@ class ClassChangeDialog(QDialog):
             return None, None
         cid = self.combo.currentData()
         return cid, self.classes[cid]
+
+class CameraSettingsDialog(QDialog):
+    def __init__(self, current_settings, parent=None):
+        super().__init__(parent)
+        self.setWindowTitle("Kamera ve Hesaplama Ayarları")
+        self.resize(300, 200)
+        
+        layout = QVBoxLayout()
+        
+        self.inputs = {}
+        fields = [
+            ("Kamera Yüksekliği (m):", "camera_height_m"),
+            ("Yatay Görüş Açısı (FOV Derece):", "fov_h_deg"),
+            ("Referans Genişlik (px):", "ref_width"),
+            ("Referans Yükseklik (px):", "ref_height")
+        ]
+        
+        for label_text, key in fields:
+            row = QHBoxLayout()
+            row.addWidget(QLabel(label_text))
+            line_edit = QLineEdit(str(current_settings.get(key, "")))
+            row.addWidget(line_edit)
+            self.inputs[key] = line_edit
+            layout.addLayout(row)
+            
+        btn_layout = QHBoxLayout()
+        ok_btn = QPushButton("Kaydet")
+        ok_btn.clicked.connect(self.accept)
+        cancel_btn = QPushButton("İptal")
+        cancel_btn.clicked.connect(self.reject)
+        
+        btn_layout.addWidget(ok_btn)
+        btn_layout.addWidget(cancel_btn)
+        layout.addLayout(btn_layout)
+        
+        self.setLayout(layout)
+        
+    def get_settings(self):
+        settings = {}
+        for key, line_edit in self.inputs.items():
+            try:
+                settings[key] = float(line_edit.text().strip())
+            except ValueError:
+                settings[key] = 0.0
+        return settings

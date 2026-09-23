@@ -43,6 +43,8 @@ class PolygonAnnotation(QGraphicsPolygonItem):
         self.on_right_click = on_right_click
         
         self.setFlag(QGraphicsItem.ItemIsSelectable, True)
+        self.setFlag(QGraphicsItem.ItemIsMovable, True)
+        self.setFlag(QGraphicsItem.ItemSendsGeometryChanges, True)
         
         self.base_color = self.get_color(class_name)
         
@@ -95,6 +97,8 @@ class PolygonAnnotation(QGraphicsPolygonItem):
             else:
                 self.setPen(QPen(self.base_color, 2, Qt.SolidLine))
                 for h in self.handles: h.hide()
+        elif change == QGraphicsItem.ItemPositionHasChanged:
+            self.notify_scene_changed()
         return super().itemChange(change, value)
         
     def contextMenuEvent(self, event):
