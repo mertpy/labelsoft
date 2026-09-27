@@ -1,16 +1,17 @@
-# YOLO & LabelMe JSON Annotator
+# Labelsoft
 
-A lightweight, fast, and feature-rich Python annotation tool built with PyQt5. This tool is designed to effortlessly create datasets for **Instance Segmentation (Polygons)** and **Object Detection (Bounding Boxes)**. It saves annotations directly in the universally recognized **LabelMe JSON** format, making it incredibly easy to integrate into modern computer vision pipelines.
+A lightweight, fast, and feature-rich Python annotation tool built with PyQt5. This tool is specifically designed to effortlessly create datasets for **Instance Segmentation (Polygons)** and **Object Detection (Bounding Boxes)**. It saves annotations in an intuitive and widely compatible JSON format, making it incredibly easy to integrate into modern computer vision pipelines.
 
 ## ✨ Key Features
 
 - **Direct Folder Access (No strict hierarchies):** Just open any folder containing your images. The application reads images directly and saves the `.json` files right next to them—no need for separate `images` or `labels` subdirectories!
-- **LabelMe JSON Architecture:** Annotations are stored in the exact format used by the original LabelMe software (`shape_type: polygon` and `shape_type: rectangle`) with real pixel coordinates.
+- **Dynamic Class Detection:** No more maintaining messy `classes.txt` files. The tool dynamically scans your existing `.json` files and detects your project's classes instantly. 
+- **Smart Class Memory:** The annotator remembers the last class you used, greatly accelerating the speed of repetitive, sequential labeling.
 - **Dual Drawing Modes:** 
-  - **Polygon (W):** Click around objects to create segmentation masks.
-  - **Bounding Box (B):** Click and drag to create detection boxes instantly.
+  - **Polygon (W):** Click around objects to create precise segmentation masks.
+  - **Bounding Box (B):** Use an intuitive 2-click system (Click once to set the first corner, move your mouse, and click again to complete the box).
 - **Advanced Edit Mode (E):**
-  - Click on a shape's center to drag and move the entire annotation.
+  - Click on a shape's center to freely drag and move the entire annotation.
   - Drag the corner handles of a bounding box to resize it.
   - Drag the vertices of a polygon to reshape it.
   - Right-click any shape to quickly change its class label.
@@ -19,9 +20,9 @@ A lightweight, fast, and feature-rich Python annotation tool built with PyQt5. T
   - Open the **⚙️ Kamera Ayarları (Camera Settings)** from the toolbar to input your camera's Height, FOV, and Resolution. 
   - The status bar at the bottom will **live-calculate** the real-world dimensions (in cm) and pixel size (in px) of your shape while you are drawing or selecting it!
 - **Crosshair Guides:** Full-screen vertical and horizontal crosshairs that follow your mouse cursor to help with precise point alignment.
-- **Auto-Fit & Easy Navigation:** Every new image automatically scales to fit your screen. Navigate seamlessly with `A` (Prev) and `D` (Next) keys.
+- **Auto-Fit & Easy Navigation:** Every new image automatically scales to fit your screen perfectly. Easily pan around large images using convenient scroll shortcuts. Navigate seamlessly with `A` (Prev) and `D` (Next) keys.
 - **Undo Support:** Press `Ctrl+Z` to undo the last drawn point while creating a polygon.
-- **Safe Deletion:** Click the Trash icon in the toolbar to safely delete an image **and** its corresponding `.json` label file from your disk.
+- **Safe Deletion:** Click the Trash icon in the toolbar to safely delete an image **and** its corresponding `.json` label file from your disk. Doing so will instantly re-scan your dataset and automatically remove any classes that are no longer in use, keeping your workspace perfectly clean.
 
 ## 🚀 Prerequisites
 
@@ -40,17 +41,17 @@ pip install PyQt5
 
 2. **Select Dataset Directory:**
    Click the **📂 Klasör Seç (Select Folder)** button.
-   Choose the folder where your images are located (e.g., `Desktop/my_dataset`). The application will scan for images immediately.
+   Choose the folder where your images are located. The application will scan for images and existing annotations immediately.
 
 3. **Annotate Your Images:**
-   - Use the toolbar or shortcuts (`W`, `B`, `E`) to switch between drawing and editing modes.
+   - Use the toolbar or shortcuts (`W`, `B`, `E`) to switch between drawing and editing modes. The application defaults to the Bounding Box mode.
    - For **Polygons**, click around the object. Clicking near the first point (turns green) completes the polygon.
-   - For **Bounding Boxes**, left-click and drag the mouse to draw a rectangle.
-   - Upon completing a shape, a dialog will appear allowing you to select an existing class or create a new one. Your classes are remembered in a local `classes.txt` file for convenience.
+   - For **Bounding Boxes**, left-click once to start, move your mouse, and left-click again to complete.
+   - Upon completing a shape, a smart dialog will appear with your last-used class pre-selected, allowing you to breeze through repetitive labeling.
 
-## ⌨️ Shortcuts
+## ⌨️ Shortcuts & Mouse Controls
 
-| Key | Action |
+| Input | Action |
 | --- | --- |
 | `W` | Switch to Polygon Draw Mode |
 | `B` | Switch to Bounding Box Draw Mode |
@@ -61,16 +62,19 @@ pip install PyQt5
 | `Delete` | Delete the selected annotation (In Edit Mode) |
 | `Right Click` | Change the class of the clicked annotation (In Edit Mode) |
 | `Esc` | Cancel current drawing |
+| **Middle Scroll Wheel** | Zoom In / Out |
+| **Ctrl + Scroll** | Vertical Pan (Up / Down) |
+| **Shift + Scroll** | Horizontal Pan (Left / Right) |
+| **Middle Click & Drag** | Free Pan / Move around the image |
 
 ## 📁 Output Structure Example
 
-When you annotate images, your folder will look like this:
+When you annotate images, your folder will naturally look like this:
 
 ```text
 my_dataset/
 ├── img1.jpg
-├── img1.json         <-- (Auto-generated LabelMe JSON file)
+├── img1.json         
 ├── img2.jpg
-├── img2.json
-└── classes.txt       <-- (Stores your classes to remember them easily)
+└── img2.json
 ```

@@ -1,10 +1,10 @@
 from PyQt5.QtWidgets import QDialog, QVBoxLayout, QHBoxLayout, QComboBox, QLabel, QPushButton, QLineEdit, QMessageBox
 
 class ClassSelectionDialog(QDialog):
-    def __init__(self, classes, save_classes_cb, parent=None):
+    def __init__(self, classes, last_used_class=None, parent=None):
         super().__init__(parent)
         self.classes = classes
-        self.save_classes_cb = save_classes_cb
+        self.last_used_class = last_used_class
         self.setWindowTitle("Sınıf Seç")
         self.resize(300, 150)
         
@@ -18,14 +18,11 @@ class ClassSelectionDialog(QDialog):
         layout.addWidget(QLabel("--- VEYA YENİ SINIF EKLE ---"))
         
         new_layout = QHBoxLayout()
-        self.id_input = QLineEdit()
-        self.id_input.setPlaceholderText("ID (örn: 0)")
         self.name_input = QLineEdit()
         self.name_input.setPlaceholderText("Sınıf Adı (örn: araba)")
         self.add_btn = QPushButton("Ekle")
         self.add_btn.clicked.connect(self.add_class)
         
-        new_layout.addWidget(self.id_input)
         new_layout.addWidget(self.name_input)
         new_layout.addWidget(self.add_btn)
         layout.addLayout(new_layout)
@@ -44,36 +41,28 @@ class ClassSelectionDialog(QDialog):
         
     def update_combo(self):
         self.combo.clear()
-        for cid, cname in sorted(self.classes.items()):
-            self.combo.addItem(f"{cid}: {cname}", cid)
+        for cname in sorted(self.classes):
+            self.combo.addItem(cname, cname)
+            
+        if self.last_used_class:
+            idx = self.combo.findText(self.last_used_class)
+            if idx >= 0:
+                self.combo.setCurrentIndex(idx)
             
     def add_class(self):
-        cid_str = self.id_input.text().strip()
         cname = self.name_input.text().strip()
-        if not cid_str or not cname:
-            QMessageBox.warning(self, "Hata", "ID ve İsim boş olamaz.")
-            return
-        try:
-            cid = int(cid_str)
-        except ValueError:
-            QMessageBox.warning(self, "Hata", "ID tam sayı olmalıdır.")
+        if not cname:
+            QMessageBox.warning(self, "Hata", "İsim boş olamaz.")
             return
             
-        if cid in self.classes:
-            QMessageBox.warning(self, "Hata", f"{cid} ID'si zaten kullanımda.")
+        if cname in self.classes:
+            QMessageBox.warning(self, "Hata", "Bu sınıf zaten mevcut.")
             return
             
-        self.classes[cid] = cname
+        self.classes.append(cname)
+        self.last_used_class = cname
         self.update_combo()
-        
-        if self.save_classes_cb:
-            self.save_classes_cb()
             
-        index = self.combo.findData(cid)
-        if index >= 0:
-            self.combo.setCurrentIndex(index)
-            
-        self.id_input.clear()
         self.name_input.clear()
         
     def check_accept(self):
@@ -84,16 +73,14 @@ class ClassSelectionDialog(QDialog):
         
     def get_selected_class(self):
         if self.combo.count() == 0:
-            return None, None
-        cid = self.combo.currentData()
-        return cid, self.classes[cid]
+            return None
+        return self.combo.currentData()
 
 
 class ClassChangeDialog(QDialog):
-    def __init__(self, current_cid, classes, save_classes_cb, parent=None):
+    def __init__(self, current_cname, classes, parent=None):
         super().__init__(parent)
         self.classes = classes
-        self.save_classes_cb = save_classes_cb
         self.setWindowTitle("Sınıfı Değiştir")
         self.resize(300, 150)
         
@@ -102,7 +89,7 @@ class ClassChangeDialog(QDialog):
         self.combo = QComboBox()
         self.update_combo()
         
-        idx = self.combo.findData(current_cid)
+        idx = self.combo.findData(current_cname)
         if idx >= 0:
             self.combo.setCurrentIndex(idx)
             
@@ -112,14 +99,11 @@ class ClassChangeDialog(QDialog):
         layout.addWidget(QLabel("--- VEYA YENİ SINIF EKLE ---"))
         
         new_layout = QHBoxLayout()
-        self.id_input = QLineEdit()
-        self.id_input.setPlaceholderText("ID (örn: 0)")
         self.name_input = QLineEdit()
         self.name_input.setPlaceholderText("Sınıf Adı")
         self.add_btn = QPushButton("Ekle")
         self.add_btn.clicked.connect(self.add_class)
         
-        new_layout.addWidget(self.id_input)
         new_layout.addWidget(self.name_input)
         new_layout.addWidget(self.add_btn)
         layout.addLayout(new_layout)
@@ -138,43 +122,32 @@ class ClassChangeDialog(QDialog):
 
     def update_combo(self):
         self.combo.clear()
-        for cid, cname in sorted(self.classes.items()):
-            self.combo.addItem(f"{cid}: {cname}", cid)
+        for cname in sorted(self.classes):
+            self.combo.addItem(cname, cname)
             
     def add_class(self):
-        cid_str = self.id_input.text().strip()
         cname = self.name_input.text().strip()
-        if not cid_str or not cname:
-            QMessageBox.warning(self, "Hata", "ID ve İsim boş olamaz.")
-            return
-        try:
-            cid = int(cid_str)
-        except ValueError:
-            QMessageBox.warning(self, "Hata", "ID tam sayı olmalıdır.")
+        if not cname:
+            QMessageBox.warning(self, "Hata", "İsim boş olamaz.")
             return
             
-        if cid in self.classes:
-            QMessageBox.warning(self, "Hata", f"{cid} ID'si zaten kullanımda.")
+        if cname in self.classes:
+            QMessageBox.warning(self, "Hata", "Bu sınıf zaten mevcut.")
             return
             
-        self.classes[cid] = cname
+        self.classes.append(cname)
         self.update_combo()
-        
-        if self.save_classes_cb:
-            self.save_classes_cb()
             
-        index = self.combo.findData(cid)
+        index = self.combo.findData(cname)
         if index >= 0:
             self.combo.setCurrentIndex(index)
             
-        self.id_input.clear()
         self.name_input.clear()
 
     def get_selected_class(self):
         if self.combo.count() == 0:
-            return None, None
-        cid = self.combo.currentData()
-        return cid, self.classes[cid]
+            return None
+        return self.combo.currentData()
 
 class CameraSettingsDialog(QDialog):
     def __init__(self, current_settings, parent=None):

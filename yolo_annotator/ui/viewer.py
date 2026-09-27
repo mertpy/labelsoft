@@ -86,15 +86,31 @@ class Viewer(QGraphicsView):
 
     def wheelEvent(self, event):
         if not self.pixmap_item: return
-        zoomInFactor = 1.15
-        zoomOutFactor = 1 / zoomInFactor
         
-        if event.angleDelta().y() > 0:
-            zoomFactor = zoomInFactor
+        modifiers = event.modifiers()
+        
+        if modifiers == Qt.ControlModifier:
+            # Yukarı / Aşağı kaydırma
+            v_scroll = self.verticalScrollBar()
+            v_scroll.setValue(v_scroll.value() - event.angleDelta().y())
+        elif modifiers == Qt.ShiftModifier:
+            # Sağa / Sola kaydırma
+            h_scroll = self.horizontalScrollBar()
+            # Bazı farelerde yatay tekerlek angleDelta.x() üzerinden gelir,
+            # ancak normal dikey tekerleği shift ile yataya çevirmek için y() kullanılır.
+            delta = event.angleDelta().x() if event.angleDelta().x() != 0 else event.angleDelta().y()
+            h_scroll.setValue(h_scroll.value() - delta)
         else:
-            zoomFactor = zoomOutFactor
+            # Yakınlaştırma (Zoom)
+            zoomInFactor = 1.15
+            zoomOutFactor = 1 / zoomInFactor
             
-        self.scale(zoomFactor, zoomFactor)
+            if event.angleDelta().y() > 0:
+                zoomFactor = zoomInFactor
+            else:
+                zoomFactor = zoomOutFactor
+                
+            self.scale(zoomFactor, zoomFactor)
         
     def update_crosshair(self, scene_pos):
         if self.pixmap_item and 0 <= scene_pos.x() <= self.img_width and 0 <= scene_pos.y() <= self.img_height:
@@ -144,9 +160,6 @@ class Viewer(QGraphicsView):
             self._is_panning = False
             self.viewport().setCursor(Qt.ArrowCursor)
             return
-        
-        if event.button() == Qt.LeftButton and self.mode == 'draw_box' and self.box_start_pt is not None:
-            self.handle_box_release(event)
             
         super().mouseReleaseEvent(event)
 
@@ -254,8 +267,13 @@ class Viewer(QGraphicsView):
         scene_pos.setX(max(0, min(self.img_width, scene_pos.x())))
         scene_pos.setY(max(0, min(self.img_height, scene_pos.y())))
         
-        self.box_start_pt = scene_pos
-        self.temp_box_item = self.scene.addRect(QRectF(scene_pos, scene_pos), QPen(Qt.red, 2), QBrush(Qt.transparent))
+        if self.box_start_pt is None:
+            # First click
+            self.box_start_pt = scene_pos
+            self.temp_box_item = self.scene.addRect(QRectF(scene_pos, scene_pos), QPen(Qt.red, 2), QBrush(Qt.transparent))
+        else:
+            # Second click
+            self.finish_box()
         
     def handle_box_move(self, event):
         if not self.temp_box_item: return
@@ -268,7 +286,7 @@ class Viewer(QGraphicsView):
         if self.on_drawing_progress:
             self.on_drawing_progress(rect)
         
-    def handle_box_release(self, event):
+    def finish_box(self):
         if not self.temp_box_item: return
         
         rect = self.temp_box_item.rect()

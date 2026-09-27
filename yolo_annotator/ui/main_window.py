@@ -9,18 +9,19 @@ from .viewer import Viewer
 from .dialogs import ClassSelectionDialog, ClassChangeDialog, CameraSettingsDialog
 from ..models.polygon_item import PolygonAnnotation
 from ..models.box_item import BoxAnnotation
-from ..utils.file_io import load_classes_txt, save_classes_txt
+from ..utils.file_io import scan_classes_from_jsons
 
 class MainWindow(QMainWindow):
     def __init__(self):
         super().__init__()
-        self.setWindowTitle("YOLOv8 Instance Segmentation Etiketleme Aracı")
+        self.setWindowTitle("Labelsoft")
         self.resize(1024, 768)
         
         self.dataset_dir = ""
         self.image_files = []
         self.current_image_idx = -1
-        self.classes = {}
+        self.classes = []
+        self.last_used_class = None
         
         self.camera_settings = {
             'camera_height_m': 1.20,
@@ -43,6 +44,7 @@ class MainWindow(QMainWindow):
         self.status_bar.showMessage("Çizim bekleniyor...")
         
         self.init_toolbar()
+        self.set_mode('draw_box')
         
     def init_toolbar(self):
         toolbar = QToolBar("Ana Araç Çubuğu")
@@ -57,13 +59,13 @@ class MainWindow(QMainWindow):
         self.btn_draw = QAction("✏️ Çokgen Çiz (W)", self)
         self.btn_draw.setShortcut("W")
         self.btn_draw.setCheckable(True)
-        self.btn_draw.setChecked(True)
         self.btn_draw.triggered.connect(lambda: self.set_mode('draw'))
         toolbar.addAction(self.btn_draw)
         
         self.btn_draw_box = QAction("🔲 Kutu Çiz (B)", self)
         self.btn_draw_box.setShortcut("B")
         self.btn_draw_box.setCheckable(True)
+        self.btn_draw_box.setChecked(True)
         self.btn_draw_box.triggered.connect(lambda: self.set_mode('draw_box'))
         toolbar.addAction(self.btn_draw_box)
         
@@ -194,7 +196,7 @@ class MainWindow(QMainWindow):
         if not folder: return
         
         self.dataset_dir = folder
-        self.classes = load_classes_txt(self.dataset_dir)
+        self.classes = scan_classes_from_jsons(self.dataset_dir)
         
         supported_exts = ('.jpg', '.jpeg', '.png', '.bmp')
         self.image_files = []
@@ -228,7 +230,7 @@ class MainWindow(QMainWindow):
         QTimer.singleShot(50, self.fit_window)
         
         file_name = os.path.basename(path)
-        self.setWindowTitle(f"YOLOv8 Etiketleme - {file_name} ({self.current_image_idx+1}/{len(self.image_files)})")
+        self.setWindowTitle(f"Labelsoft - {file_name} ({self.current_image_idx+1}/{len(self.image_files)})")
         
     def prev_image(self):
         if self.image_files and self.current_image_idx > 0:
@@ -271,35 +273,39 @@ class MainWindow(QMainWindow):
                     print(f"Etiket silinemedi: {e}")
                     
             del self.image_files[self.current_image_idx]
+            self.classes = scan_classes_from_jsons(self.dataset_dir)
             
             if not self.image_files:
                 self.viewer.scene.clear()
                 self.viewer.pixmap_item = None
                 self.current_image_idx = -1
-                self.setWindowTitle("YOLOv8 Instance Segmentation Etiketleme Aracı")
+                self.setWindowTitle("Labelsoft")
             else:
                 if self.current_image_idx >= len(self.image_files):
                     self.current_image_idx = len(self.image_files) - 1
                 self.load_current_image()
 
-    def save_classes(self):
-        save_classes_txt(self.dataset_dir, self.classes)
-
     def on_polygon_completed(self, poly):
-        dialog = ClassSelectionDialog(self.classes, self.save_classes, self)
+        dialog = ClassSelectionDialog(self.classes, self.last_used_class, self)
         if dialog.exec_() == QDialog.Accepted:
-            cid, cname = dialog.get_selected_class()
-            if cid is not None:
-                item = PolygonAnnotation(poly, cid, cname, on_right_click=self.on_right_click_item)
+            cname = dialog.get_selected_class()
+            if cname:
+                self.last_used_class = cname
+                if cname not in self.classes:
+                    self.classes.append(cname)
+                item = PolygonAnnotation(poly, cname, on_right_click=self.on_right_click_item)
                 self.viewer.scene.addItem(item)
                 self.save_labels()
                 
     def on_box_completed(self, rect):
-        dialog = ClassSelectionDialog(self.classes, self.save_classes, self)
+        dialog = ClassSelectionDialog(self.classes, self.last_used_class, self)
         if dialog.exec_() == QDialog.Accepted:
-            cid, cname = dialog.get_selected_class()
-            if cid is not None:
-                item = BoxAnnotation(rect, cid, cname, on_right_click=self.on_right_click_item)
+            cname = dialog.get_selected_class()
+            if cname:
+                self.last_used_class = cname
+                if cname not in self.classes:
+                    self.classes.append(cname)
+                item = BoxAnnotation(rect, cname, on_right_click=self.on_right_click_item)
                 self.viewer.scene.addItem(item)
                 self.save_labels()
 
@@ -307,13 +313,13 @@ class MainWindow(QMainWindow):
         if self.viewer.mode != 'edit':
             return
             
-        dialog = ClassChangeDialog(item.class_id, self.classes, self.save_classes, self)
+        dialog = ClassChangeDialog(item.class_name, self.classes, self)
         dialog.move(int(screen_pos.x()), int(screen_pos.y()))
         
         if dialog.exec_() == QDialog.Accepted:
-            cid, cname = dialog.get_selected_class()
-            if cid is not None and (cid != item.class_id):
-                item.update_class(cid, cname)
+            cname = dialog.get_selected_class()
+            if cname and (cname != item.class_name):
+                item.update_class(cname)
 
     def save_labels(self):
         if not hasattr(self, 'current_image_path') or not self.dataset_dir:
@@ -392,18 +398,8 @@ class MainWindow(QMainWindow):
             shape_type = shape.get("shape_type", "polygon")
             points = shape.get("points", [])
             
-            # Find class id for backward compatibility with dialogs
-            cid = -1
-            for k, v in self.classes.items():
-                if v == cname:
-                    cid = k
-                    break
-            
-            if cid == -1:
-                # Assign new random ID for missing class
-                cid = max(self.classes.keys(), default=-1) + 1
-                self.classes[cid] = cname
-                self.save_classes()
+            if cname not in self.classes:
+                self.classes.append(cname)
             
             if shape_type == "rectangle" and len(points) >= 2:
                 xmin, ymin = points[0]
@@ -411,10 +407,10 @@ class MainWindow(QMainWindow):
                 w = xmax - xmin
                 h = ymax - ymin
                 rect = QRectF(xmin, ymin, w, h)
-                item = BoxAnnotation(rect, cid, cname, on_right_click=self.on_right_click_item)
+                item = BoxAnnotation(rect, cname, on_right_click=self.on_right_click_item)
                 self.viewer.scene.addItem(item)
             elif shape_type == "polygon" and len(points) >= 3:
                 qpoints = [QPointF(pt[0], pt[1]) for pt in points]
                 poly = QPolygonF(qpoints)
-                item = PolygonAnnotation(poly, cid, cname, on_right_click=self.on_right_click_item)
+                item = PolygonAnnotation(poly, cname, on_right_click=self.on_right_click_item)
                 self.viewer.scene.addItem(item)

@@ -42,9 +42,8 @@ class BoxAnnotation(QGraphicsRectItem):
     """
     Çizilen her bir kutuyu (Bounding Box) temsil eden sınıf.
     """
-    def __init__(self, rect, class_id, class_name, on_right_click=None, parent=None):
+    def __init__(self, rect, class_name, on_right_click=None, parent=None):
         super().__init__(rect, parent)
-        self.class_id = class_id
         self.class_name = class_name
         self.on_right_click = on_right_click
         
@@ -107,8 +106,7 @@ class BoxAnnotation(QGraphicsRectItem):
         if scene and hasattr(scene, 'on_scene_changed'):
             scene.on_scene_changed()
 
-    def update_class(self, new_class_id, new_class_name):
-        self.class_id = new_class_id
+    def update_class(self, new_class_name):
         self.class_name = new_class_name
         self.base_color = self.get_color(new_class_name)
         self.setBrush(QBrush(QColor(self.base_color.red(), self.base_color.green(), self.base_color.blue(), 100)))
