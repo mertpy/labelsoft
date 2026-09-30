@@ -1,14 +1,16 @@
 import random
 from PyQt5.QtWidgets import QGraphicsItem, QGraphicsRectItem, QGraphicsEllipseItem
-from PyQt5.QtCore import Qt, QRectF
+from PyQt5.QtCore import Qt, QRectF, QPointF
 from PyQt5.QtGui import QColor, QBrush, QPen
 
 class BoxHandle(QGraphicsEllipseItem):
     """
     Kutunun köşelerini temsil eder ve yeniden boyutlandırmayı sağlar.
     """
+    OPPOSITE_MAP = {'TL': 'BR', 'TR': 'BL', 'BL': 'TR', 'BR': 'TL'}
+    
     def __init__(self, position_type, box_item, parent=None):
-        super().__init__(-4, -4, 8, 8, parent)
+        super().__init__(-6, -6, 12, 12, parent)
         self.position_type = position_type # 'TL', 'TR', 'BL', 'BR'
         self.box_item = box_item
         
@@ -16,10 +18,11 @@ class BoxHandle(QGraphicsEllipseItem):
         self.setPen(QPen(Qt.black, 1))
         
         self.setAcceptHoverEvents(True)
-        self.setFlag(QGraphicsItem.ItemIsMovable, True)
-        self.setFlag(QGraphicsItem.ItemSendsGeometryChanges, True)
         self.setCursor(Qt.CrossCursor)
         self.hide()
+        
+        self._is_dragging = False
+        self._drag_anchor = None  # Sürükleme başlangıcında çapraz köşenin pozisyonu
 
     def hoverEnterEvent(self, event):
         self.setBrush(QBrush(Qt.red))
@@ -29,13 +32,32 @@ class BoxHandle(QGraphicsEllipseItem):
         self.setBrush(QBrush(Qt.white))
         super().hoverLeaveEvent(event)
 
-    def itemChange(self, change, value):
-        if change == QGraphicsItem.ItemPositionChange and self.scene():
-            self.box_item.update_handle_position(self.position_type, value)
-        elif change == QGraphicsItem.ItemPositionHasChanged:
+    def mousePressEvent(self, event):
+        if event.button() == Qt.LeftButton:
+            self._is_dragging = True
+            # Sürükleme başladığında çapraz köşenin pozisyonunu kaydet
+            opposite_type = self.OPPOSITE_MAP[self.position_type]
+            self._drag_anchor = QPointF(self.box_item.handles[opposite_type].pos())
+            event.accept()
+        else:
+            super().mousePressEvent(event)
+
+    def mouseMoveEvent(self, event):
+        if self._is_dragging:
+            new_pos = self.mapToParent(event.pos())
+            self.box_item.update_handle_position(new_pos, self._drag_anchor)
+            event.accept()
+        else:
+            super().mouseMoveEvent(event)
+
+    def mouseReleaseEvent(self, event):
+        if event.button() == Qt.LeftButton:
+            self._is_dragging = False
+            self._drag_anchor = None
             self.box_item.notify_scene_changed()
-            
-        return super().itemChange(change, value)
+            event.accept()
+        else:
+            super().mouseReleaseEvent(event)
 
 
 class BoxAnnotation(QGraphicsRectItem):
@@ -58,6 +80,7 @@ class BoxAnnotation(QGraphicsRectItem):
         self.setBrush(QBrush(QColor(self.base_color.red(), self.base_color.green(), self.base_color.blue(), 100)))
         self.setPen(QPen(self.base_color, 2, Qt.SolidLine))
         
+        self._updating_handles = False
         self.handles = {}
         self.create_handles()
         
@@ -82,29 +105,38 @@ class BoxAnnotation(QGraphicsRectItem):
         if 'BL' in self.handles: self.handles['BL'].setPos(rect.bottomLeft())
         if 'BR' in self.handles: self.handles['BR'].setPos(rect.bottomRight())
         
-    def update_handle_position(self, pos_type, new_pos):
-        rect = self.rect()
-        if pos_type == 'TL':
-            rect.setTopLeft(new_pos)
-        elif pos_type == 'TR':
-            rect.setTopRight(new_pos)
-        elif pos_type == 'BL':
-            rect.setBottomLeft(new_pos)
-        elif pos_type == 'BR':
-            rect.setBottomRight(new_pos)
-            
-        self.setRect(rect.normalized())
+    def update_handle_position(self, new_pos, anchor_pos):
+        if self._updating_handles: return
+        self._updating_handles = True
         
-        normalized = self.rect()
-        if pos_type != 'TL': self.handles['TL'].setPos(normalized.topLeft())
-        if pos_type != 'TR': self.handles['TR'].setPos(normalized.topRight())
-        if pos_type != 'BL': self.handles['BL'].setPos(normalized.bottomLeft())
-        if pos_type != 'BR': self.handles['BR'].setPos(normalized.bottomRight())
+        # anchor_pos: sürükleme başında kaydedilen çapraz köşe (sabit)
+        # new_pos: sürüklenen köşenin yeni pozisyonu
+        x1, y1 = new_pos.x(), new_pos.y()
+        x2, y2 = anchor_pos.x(), anchor_pos.y()
+        
+        corners = {
+            'TL': QPointF(min(x1, x2), min(y1, y2)),
+            'TR': QPointF(max(x1, x2), min(y1, y2)),
+            'BL': QPointF(min(x1, x2), max(y1, y2)),
+            'BR': QPointF(max(x1, x2), max(y1, y2)),
+        }
+        
+        new_rect = QRectF(corners['TL'], corners['BR'])
+        self.setRect(new_rect)
+        
+        # Tüm handle pozisyonlarını güncelle
+        for key, corner in corners.items():
+            self.handles[key].setPos(corner)
+        
+        self._updating_handles = False
         
     def notify_scene_changed(self):
         scene = self.scene()
-        if scene and hasattr(scene, 'on_scene_changed'):
-            scene.on_scene_changed()
+        if scene:
+            for view in scene.views():
+                if hasattr(view, 'on_scene_changed') and view.on_scene_changed:
+                    view.on_scene_changed()
+                    return
 
     def update_class(self, new_class_name):
         self.class_name = new_class_name

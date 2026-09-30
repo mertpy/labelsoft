@@ -5,7 +5,7 @@ from PyQt5.QtGui import QColor, QBrush, QPen
 
 class VertexHandle(QGraphicsEllipseItem):
     def __init__(self, index, polygon_item, parent=None):
-        super().__init__(-4, -4, 8, 8, parent)
+        super().__init__(-6, -6, 12, 12, parent)
         self.index = index
         self.polygon_item = polygon_item
         
@@ -13,10 +13,10 @@ class VertexHandle(QGraphicsEllipseItem):
         self.setPen(QPen(Qt.black, 1))
         
         self.setAcceptHoverEvents(True)
-        self.setFlag(QGraphicsItem.ItemIsMovable, True)
-        self.setFlag(QGraphicsItem.ItemSendsGeometryChanges, True)
         self.setCursor(Qt.CrossCursor)
         self.hide()
+        
+        self._is_dragging = False
 
     def hoverEnterEvent(self, event):
         self.setBrush(QBrush(Qt.red))
@@ -26,13 +26,29 @@ class VertexHandle(QGraphicsEllipseItem):
         self.setBrush(QBrush(Qt.white))
         super().hoverLeaveEvent(event)
 
-    def itemChange(self, change, value):
-        if change == QGraphicsItem.ItemPositionChange and self.scene():
-            self.polygon_item.update_vertex(self.index, value)
-        elif change == QGraphicsItem.ItemPositionHasChanged:
+    def mousePressEvent(self, event):
+        if event.button() == Qt.LeftButton:
+            self._is_dragging = True
+            event.accept()
+        else:
+            super().mousePressEvent(event)
+
+    def mouseMoveEvent(self, event):
+        if self._is_dragging:
+            new_pos = self.mapToParent(event.pos())
+            self.polygon_item.update_vertex(self.index, new_pos)
+            self.setPos(new_pos)
+            event.accept()
+        else:
+            super().mouseMoveEvent(event)
+
+    def mouseReleaseEvent(self, event):
+        if event.button() == Qt.LeftButton:
+            self._is_dragging = False
             self.polygon_item.notify_scene_changed()
-            
-        return super().itemChange(change, value)
+            event.accept()
+        else:
+            super().mouseReleaseEvent(event)
 
 
 class PolygonAnnotation(QGraphicsPolygonItem):
@@ -74,8 +90,11 @@ class PolygonAnnotation(QGraphicsPolygonItem):
         
     def notify_scene_changed(self):
         scene = self.scene()
-        if scene and hasattr(scene, 'on_scene_changed'):
-            scene.on_scene_changed()
+        if scene:
+            for view in scene.views():
+                if hasattr(view, 'on_scene_changed') and view.on_scene_changed:
+                    view.on_scene_changed()
+                    return
 
     def update_class(self, new_class_name):
         self.class_name = new_class_name

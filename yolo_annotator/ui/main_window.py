@@ -10,6 +10,7 @@ from .dialogs import ClassSelectionDialog, ClassChangeDialog, CameraSettingsDial
 from ..models.polygon_item import PolygonAnnotation
 from ..models.box_item import BoxAnnotation
 from ..utils.file_io import scan_classes_from_jsons
+from ..utils.updater import UpdateWorker
 
 class MainWindow(QMainWindow):
     def __init__(self):
@@ -105,6 +106,52 @@ class MainWindow(QMainWindow):
         btn_camera.triggered.connect(self.open_camera_settings)
         toolbar.addAction(btn_camera)
         
+        toolbar.addSeparator()
+        
+        self.btn_update = QAction("🔄 Güncelle", self)
+        self.btn_update.triggered.connect(self.start_update)
+        toolbar.addAction(self.btn_update)
+        
+    def start_update(self):
+        reply = QMessageBox.question(
+            self, 'Güncelleme',
+            'GitHub\'dan son sürümü indirmek istiyor musunuz?\n\n'
+            'Güncelleme sonrası uygulamanın yeniden başlatılması gerekir.',
+            QMessageBox.Yes | QMessageBox.No, QMessageBox.No
+        )
+        if reply != QMessageBox.Yes:
+            return
+            
+        install_dir = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+        
+        self.btn_update.setEnabled(False)
+        self.btn_update.setText("🔄 Güncelleniyor...")
+        self.status_bar.showMessage("Güncelleme başlatıldı...")
+        
+        self._update_worker = UpdateWorker(install_dir, self)
+        self._update_worker.progress.connect(self._on_update_progress)
+        self._update_worker.finished_ok.connect(self._on_update_ok)
+        self._update_worker.finished_err.connect(self._on_update_err)
+        self._update_worker.start()
+        
+    def _on_update_progress(self, msg):
+        self.status_bar.showMessage(msg)
+        
+    def _on_update_ok(self):
+        self.btn_update.setEnabled(True)
+        self.btn_update.setText("🔄 Güncelle")
+        QMessageBox.information(
+            self, 'Güncelleme Tamamlandı',
+            'Güncelleme başarıyla tamamlandı!\n\n'
+            'Değişikliklerin geçerli olması için uygulamayı yeniden başlatın.'
+        )
+        
+    def _on_update_err(self, err_msg):
+        self.btn_update.setEnabled(True)
+        self.btn_update.setText("🔄 Güncelle")
+        self.status_bar.showMessage("Güncelleme başarısız.")
+        QMessageBox.warning(self, 'Güncelleme Hatası', f'Güncelleme sırasında hata oluştu:\n\n{err_msg}')
+
     def open_camera_settings(self):
         dialog = CameraSettingsDialog(self.camera_settings, self)
         if dialog.exec_() == QDialog.Accepted:
