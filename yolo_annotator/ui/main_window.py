@@ -3,7 +3,7 @@ import os
 import json
 from PyQt5.QtWidgets import QMainWindow, QToolBar, QAction, QFileDialog, QMessageBox, QDialog, QStatusBar
 from PyQt5.QtCore import Qt, QPointF, QRectF, QTimer
-from PyQt5.QtGui import QPixmap, QPolygonF
+from PyQt5.QtGui import QPixmap, QPolygonF, QPen
 
 from .viewer import Viewer
 from .dialogs import ClassSelectionDialog, ClassChangeDialog, CameraSettingsDialog
@@ -148,6 +148,13 @@ class MainWindow(QMainWindow):
         
         real_w_cm = (px_w * m_per_px) * 100
         real_h_cm = (px_h * m_per_px) * 100
+        
+        if self.viewer.temp_box_item:
+            if real_w_cm < 3.0 and real_h_cm < 3.0:
+                self.viewer.temp_box_item.setPen(QPen(Qt.red, 2))
+            else:
+                self.viewer.temp_box_item.setPen(QPen(Qt.green, 2))
+        
         
         msg = f"Çiziliyor... | Gerçek Boyut: {real_w_cm:.1f}x{real_h_cm:.1f} cm | Piksel: {int(px_w)}x{int(px_h)} px"
         self.status_bar.showMessage(msg)
