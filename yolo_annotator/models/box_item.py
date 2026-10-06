@@ -72,6 +72,7 @@ class BoxAnnotation(QGraphicsRectItem):
         self.setFlag(QGraphicsItem.ItemIsSelectable, True)
         self.setFlag(QGraphicsItem.ItemIsMovable, True)
         self.setFlag(QGraphicsItem.ItemSendsGeometryChanges, True)
+        self.setZValue(10)
         
         # Sınıfa özel kalıcı rastgele renk oluştur
         self.base_color = self.get_color(class_name)

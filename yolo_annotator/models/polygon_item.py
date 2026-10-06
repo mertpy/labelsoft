@@ -60,6 +60,7 @@ class PolygonAnnotation(QGraphicsPolygonItem):
         self.setFlag(QGraphicsItem.ItemIsSelectable, True)
         self.setFlag(QGraphicsItem.ItemIsMovable, True)
         self.setFlag(QGraphicsItem.ItemSendsGeometryChanges, True)
+        self.setZValue(10)
         
         self.base_color = self.get_color(class_name)
         

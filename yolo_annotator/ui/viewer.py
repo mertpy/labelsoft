@@ -40,7 +40,7 @@ class Viewer(QGraphicsView):
         self.temp_box_item = None
         
         # Crosshair
-        pen = QPen(Qt.white, 1, Qt.DashLine)
+        pen = QPen(Qt.white, 0, Qt.DashLine)
         self.crosshair_v = self.scene.addLine(0,0,0,0, pen)
         self.crosshair_h = self.scene.addLine(0,0,0,0, pen)
         self.crosshair_v.hide()
@@ -68,7 +68,7 @@ class Viewer(QGraphicsView):
         self.scene.clear()
         
         # Re-add crosshairs because clear() deleted them
-        pen = QPen(Qt.white, 1, Qt.DashLine)
+        pen = QPen(Qt.white, 0, Qt.DashLine)
         self.crosshair_v = self.scene.addLine(0,0,0,0, pen)
         self.crosshair_h = self.scene.addLine(0,0,0,0, pen)
         self.crosshair_v.setZValue(9999) # Always on top
@@ -77,6 +77,7 @@ class Viewer(QGraphicsView):
         self.crosshair_h.hide()
         
         self.pixmap_item = QGraphicsPixmapItem(pixmap)
+        self.pixmap_item.setZValue(-1)
         self.scene.addItem(self.pixmap_item)
         
         self.img_width = pixmap.width()
@@ -146,6 +147,7 @@ class Viewer(QGraphicsView):
             self.horizontalScrollBar().setValue(self.horizontalScrollBar().value() - delta.x())
             self.verticalScrollBar().setValue(self.verticalScrollBar().value() - delta.y())
             self._pan_start = event.pos()
+            self.viewport().update()
             return
             
         if self.mode == 'draw' and self.current_points:
@@ -154,6 +156,9 @@ class Viewer(QGraphicsView):
             self.handle_box_move(event)
             
         super().mouseMoveEvent(event)
+        
+        # Olası tüm iz/kalıntı hatalarını silmek için view'ı yenile
+        self.viewport().update()
 
     def mouseReleaseEvent(self, event):
         if event.button() == Qt.MiddleButton:
