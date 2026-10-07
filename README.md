@@ -1,6 +1,6 @@
 # Labelsoft
 
-A lightweight, fast, and feature-rich Python annotation tool built with PyQt5. This tool is specifically designed to effortlessly create datasets for **Instance Segmentation (Polygons)** and **Object Detection (Bounding Boxes)**. It saves annotations in the standard **LabelMe JSON format**, making it incredibly easy to integrate into modern computer vision pipelines.
+A lightweight, fast, and feature-rich Python annotation tool built with PyQt5. This tool is specifically designed to effortlessly create datasets for **Instance Segmentation (Polygons)** and **Object Detection (Bounding Boxes)**. It saves annotations in an intuitive and widely compatible JSON format, making it incredibly easy to integrate into modern computer vision pipelines.
 
 ## ✨ Key Features
 

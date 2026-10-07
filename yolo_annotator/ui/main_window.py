@@ -196,14 +196,27 @@ class MainWindow(QMainWindow):
         real_w_cm = (px_w * m_per_px) * 100
         real_h_cm = (px_h * m_per_px) * 100
         
-        if self.viewer.temp_box_item:
-            if real_w_cm > 3.0 and real_h_cm > 3.0:
-                self.viewer.temp_box_item.setPen(QPen(Qt.green, 2))
-            else:
-                self.viewer.temp_box_item.setPen(QPen(Qt.red, 2))
+        is_too_small = (real_w_cm <= 3.0 or real_h_cm <= 3.0)
+        is_too_large = False
         
+        if self.viewer.img_width > 0 and self.viewer.img_height > 0:
+            box_area = px_w * px_h
+            img_area = self.viewer.img_width * self.viewer.img_height
+            if box_area > img_area * 0.40:
+                is_too_large = True
+
+        if self.viewer.temp_box_item:
+            if is_too_small or is_too_large:
+                self.viewer.temp_box_item.setPen(QPen(Qt.red, 2))
+            else:
+                self.viewer.temp_box_item.setPen(QPen(Qt.green, 2))
         
         msg = f"Çiziliyor... | Gerçek Boyut: {real_w_cm:.1f}x{real_h_cm:.1f} cm | Piksel: {int(px_w)}x{int(px_h)} px"
+        if is_too_large:
+            msg += " [HATA: Maks %40 Alan]"
+        elif is_too_small:
+            msg += " [HATA: Min 3cm]"
+            
         self.status_bar.showMessage(msg)
             
     def calculate_and_display_dimensions(self, item):
