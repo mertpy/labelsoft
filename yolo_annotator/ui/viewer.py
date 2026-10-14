@@ -64,8 +64,23 @@ class Viewer(QGraphicsView):
                     return
             self.on_selection_changed(None)
 
-    def set_image(self, pixmap):
+    def _safe_remove(self, item):
+        if item is not None and item.scene() is self.scene:
+            self.scene.removeItem(item)
+
+    def reset_scene(self):
+        # Drop references to temp items BEFORE clear() destroys them
+        self.current_points = []
+        self.temp_lines = []
+        self.temp_points = []
+        self.first_point_item = None
+        self.floating_line = None
+        self.box_start_pt = None
+        self.temp_box_item = None
         self.scene.clear()
+
+    def set_image(self, pixmap):
+        self.reset_scene()
         
         # Re-add crosshairs because clear() deleted them
         pen = QPen(Qt.white, 0, Qt.DashLine)
@@ -236,17 +251,17 @@ class Viewer(QGraphicsView):
         
         if self.temp_points:
             item = self.temp_points.pop()
-            self.scene.removeItem(item)
+            self._safe_remove(item)
             if item == self.first_point_item:
                 self.first_point_item = None
                 
         if self.temp_lines:
             item = self.temp_lines.pop()
-            self.scene.removeItem(item)
+            self._safe_remove(item)
             
         if not self.current_points:
             if self.floating_line:
-                self.scene.removeItem(self.floating_line)
+                self._safe_remove(self.floating_line)
                 self.floating_line = None
         else:
             cursor_pos = self.mapFromGlobal(self.cursor().pos())
@@ -304,11 +319,11 @@ class Viewer(QGraphicsView):
     def cancel_drawing(self):
         # Polygon cancels
         for item in self.temp_lines:
-            self.scene.removeItem(item)
+            self._safe_remove(item)
         for item in self.temp_points:
-            self.scene.removeItem(item)
+            self._safe_remove(item)
         if self.floating_line:
-            self.scene.removeItem(self.floating_line)
+            self._safe_remove(self.floating_line)
             self.floating_line = None
             
         self.current_points = []
@@ -319,7 +334,7 @@ class Viewer(QGraphicsView):
         # Box cancels
         self.box_start_pt = None
         if self.temp_box_item:
-            self.scene.removeItem(self.temp_box_item)
+            self._safe_remove(self.temp_box_item)
             self.temp_box_item = None
             
         if self.on_drawing_progress:

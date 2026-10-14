@@ -343,7 +343,7 @@ class MainWindow(QMainWindow):
             self.classes = scan_classes_from_jsons(self.dataset_dir)
             
             if not self.image_files:
-                self.viewer.scene.clear()
+                self.viewer.reset_scene()
                 self.viewer.pixmap_item = None
                 self.current_image_idx = -1
                 self.setWindowTitle("Labelsoft")

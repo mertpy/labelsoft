@@ -115,6 +115,12 @@ class BoxAnnotation(QGraphicsRectItem):
         x1, y1 = new_pos.x(), new_pos.y()
         x2, y2 = anchor_pos.x(), anchor_pos.y()
         
+        # Fotoğraf sınırları içinde tut
+        if self.scene():
+            bounds = self.mapRectFromScene(self.scene().sceneRect())
+            x1 = max(bounds.left(), min(bounds.right(), x1))
+            y1 = max(bounds.top(), min(bounds.bottom(), y1))
+        
         corners = {
             'TL': QPointF(min(x1, x2), min(y1, y2)),
             'TR': QPointF(max(x1, x2), min(y1, y2)),
@@ -158,6 +164,18 @@ class BoxAnnotation(QGraphicsRectItem):
             else:
                 self.setPen(QPen(self.base_color, 2, Qt.SolidLine))
                 for h in self.handles.values(): h.hide()
+        elif change == QGraphicsItem.ItemPositionChange and self.scene():
+            # Taşırken kutuyu fotoğraf sınırları içinde tut
+            bounds = self.scene().sceneRect()
+            r = self.rect()
+            new_pos = value
+            min_x = bounds.left() - r.left()
+            max_x = bounds.right() - r.right()
+            min_y = bounds.top() - r.top()
+            max_y = bounds.bottom() - r.bottom()
+            new_pos.setX(max(min_x, min(max_x, new_pos.x())))
+            new_pos.setY(max(min_y, min(max_y, new_pos.y())))
+            return new_pos
         elif change == QGraphicsItem.ItemPositionHasChanged:
             self.notify_scene_changed()
         return super().itemChange(change, value)

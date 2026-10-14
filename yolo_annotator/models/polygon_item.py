@@ -36,7 +36,7 @@ class VertexHandle(QGraphicsEllipseItem):
     def mouseMoveEvent(self, event):
         if self._is_dragging:
             new_pos = self.mapToParent(event.pos())
-            self.polygon_item.update_vertex(self.index, new_pos)
+            new_pos = self.polygon_item.update_vertex(self.index, new_pos)
             self.setPos(new_pos)
             event.accept()
         else:
@@ -85,9 +85,15 @@ class PolygonAnnotation(QGraphicsPolygonItem):
             self.handles.append(handle)
             
     def update_vertex(self, index, new_pos):
+        # Fotoğraf sınırları içinde tut
+        if self.scene():
+            bounds = self.mapRectFromScene(self.scene().sceneRect())
+            new_pos = QPointF(max(bounds.left(), min(bounds.right(), new_pos.x())),
+                              max(bounds.top(), min(bounds.bottom(), new_pos.y())))
         poly = self.polygon()
         poly.replace(index, new_pos)
         self.setPolygon(poly)
+        return new_pos
         
     def notify_scene_changed(self):
         scene = self.scene()
@@ -115,6 +121,14 @@ class PolygonAnnotation(QGraphicsPolygonItem):
             else:
                 self.setPen(QPen(self.base_color, 2, Qt.SolidLine))
                 for h in self.handles: h.hide()
+        elif change == QGraphicsItem.ItemPositionChange and self.scene():
+            # Taşırken çokgeni fotoğraf sınırları içinde tut
+            bounds = self.scene().sceneRect()
+            r = self.polygon().boundingRect()
+            new_pos = value
+            new_pos.setX(max(bounds.left() - r.left(), min(bounds.right() - r.right(), new_pos.x())))
+            new_pos.setY(max(bounds.top() - r.top(), min(bounds.bottom() - r.bottom(), new_pos.y())))
+            return new_pos
         elif change == QGraphicsItem.ItemPositionHasChanged:
             self.notify_scene_changed()
         return super().itemChange(change, value)
