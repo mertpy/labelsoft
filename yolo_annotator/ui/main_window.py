@@ -1,7 +1,7 @@
 import math
 import os
 import json
-from PyQt5.QtWidgets import QMainWindow, QToolBar, QAction, QFileDialog, QMessageBox, QDialog, QStatusBar
+from PyQt5.QtWidgets import QMainWindow, QToolBar, QAction, QFileDialog, QMessageBox, QDialog, QStatusBar, QApplication
 from PyQt5.QtCore import Qt, QPointF, QRectF, QTimer
 from PyQt5.QtGui import QPixmap, QPolygonF, QPen
 
@@ -23,6 +23,8 @@ class MainWindow(QMainWindow):
         self.current_image_idx = -1
         self.classes = []
         self.last_used_class = None
+        self.undo_stack = []  # Geçerli fotoğraf için etiket durumu görüntüleri
+        self.max_undo = 100
         
         self.camera_settings = {
             'camera_height_m': 1.20,
@@ -38,6 +40,8 @@ class MainWindow(QMainWindow):
         self.viewer.on_right_click_item = self.on_right_click_item
         self.viewer.on_selection_changed = self.calculate_and_display_dimensions
         self.viewer.on_drawing_progress = self.on_drawing_progress_handler
+        self.viewer.on_undo = self.undo_last_action
+        self.viewer.on_gesture_end = self.record_state
         self.setCentralWidget(self.viewer)
         
         self.status_bar = QStatusBar()
@@ -166,6 +170,9 @@ class MainWindow(QMainWindow):
                         
     def on_scene_changed_handler(self):
         self.save_labels()
+        # Sürükleme sırasında (fare basılı) her adımı kaydetme; fare bırakılınca kaydedilir
+        if not (QApplication.mouseButtons() & Qt.LeftButton):
+            self.record_state()
         selected = self.viewer.scene.selectedItems()
         if selected:
             for item in selected:
@@ -294,6 +301,8 @@ class MainWindow(QMainWindow):
             
         self.viewer.set_image(pixmap)
         self.load_labels()
+        self.undo_stack = []
+        self.record_state()
         QTimer.singleShot(50, self.fit_window)
         
         file_name = os.path.basename(path)
@@ -344,6 +353,7 @@ class MainWindow(QMainWindow):
             
             if not self.image_files:
                 self.viewer.reset_scene()
+                self.undo_stack = []
                 self.viewer.pixmap_item = None
                 self.current_image_idx = -1
                 self.setWindowTitle("Labelsoft")
@@ -363,6 +373,7 @@ class MainWindow(QMainWindow):
                 item = PolygonAnnotation(poly, cname, on_right_click=self.on_right_click_item)
                 self.viewer.scene.addItem(item)
                 self.save_labels()
+                self.record_state()
                 
     def on_box_completed(self, rect):
         dialog = ClassSelectionDialog(self.classes, self.last_used_class, self)
@@ -375,6 +386,7 @@ class MainWindow(QMainWindow):
                 item = BoxAnnotation(rect, cname, on_right_click=self.on_right_click_item)
                 self.viewer.scene.addItem(item)
                 self.save_labels()
+                self.record_state()
 
     def on_right_click_item(self, item, screen_pos):
         if self.viewer.mode != 'edit':
@@ -388,31 +400,11 @@ class MainWindow(QMainWindow):
             if cname and (cname != item.class_name):
                 item.update_class(cname)
 
-    def save_labels(self):
-        if not hasattr(self, 'current_image_path') or not self.dataset_dir:
-            return
-        
-        base_name = os.path.splitext(os.path.basename(self.current_image_path))[0]
-        json_path = os.path.join(self.dataset_dir, f"{base_name}.json")
-        
+    def collect_shapes(self):
+        """Sahnedeki tüm etiketleri JSON'a uygun sekilde listeler."""
         items = self.viewer.scene.items()
         annotations = [it for it in items if isinstance(it, (PolygonAnnotation, BoxAnnotation))]
-        
-        if not annotations:
-            if os.path.exists(json_path):
-                os.remove(json_path)
-            return
-            
-        data = {
-            "version": "5.0.0",
-            "flags": {},
-            "shapes": [],
-            "imagePath": os.path.basename(self.current_image_path),
-            "imageData": None,
-            "imageHeight": int(self.viewer.img_height),
-            "imageWidth": int(self.viewer.img_width)
-        }
-            
+        shapes = []
         for item in annotations:
             shape = {
                 "label": item.class_name,
@@ -431,14 +423,68 @@ class MainWindow(QMainWindow):
                 
             elif isinstance(item, BoxAnnotation):
                 shape["shape_type"] = "rectangle"
-                rect = item.sceneBoundingRect()
+                # Kalem kalınlığı dahil olmayan gerçek kutu geometrisi
+                rect = item.mapRectToScene(item.rect())
                 shape["points"].append([rect.left(), rect.top()])
                 shape["points"].append([rect.right(), rect.bottom()])
                 
-            data["shapes"].append(shape)
+            shapes.append(shape)
+        return shapes
+
+    def save_labels(self):
+        if not hasattr(self, 'current_image_path') or not self.dataset_dir:
+            return
+        
+        base_name = os.path.splitext(os.path.basename(self.current_image_path))[0]
+        json_path = os.path.join(self.dataset_dir, f"{base_name}.json")
+        
+        shapes = self.collect_shapes()
+        
+        if not shapes:
+            if os.path.exists(json_path):
+                os.remove(json_path)
+            return
+            
+        data = {
+            "version": "5.0.0",
+            "flags": {},
+            "shapes": shapes,
+            "imagePath": os.path.basename(self.current_image_path),
+            "imageData": None,
+            "imageHeight": int(self.viewer.img_height),
+            "imageWidth": int(self.viewer.img_width)
+        }
             
         with open(json_path, 'w', encoding='utf-8') as f:
             json.dump(data, f, indent=2, ensure_ascii=False)
+
+    # --- GERİ ALMA (UNDO) ---
+    def record_state(self):
+        if not getattr(self.viewer, 'pixmap_item', None):
+            return
+        snapshot = self.collect_shapes()
+        snapshot.sort(key=lambda s: json.dumps(s, sort_keys=True))
+        if self.undo_stack and self.undo_stack[-1] == snapshot:
+            return
+        self.undo_stack.append(snapshot)
+        if len(self.undo_stack) > self.max_undo:
+            self.undo_stack.pop(0)
+
+    def undo_last_action(self):
+        if len(self.undo_stack) < 2:
+            self.status_bar.showMessage("Geri alınacak işlem yok.")
+            return
+        self.undo_stack.pop()
+        snapshot = self.undo_stack[-1]
+        
+        for it in list(self.viewer.scene.items()):
+            if isinstance(it, (PolygonAnnotation, BoxAnnotation)) and it.scene() is self.viewer.scene:
+                self.viewer.scene.removeItem(it)
+        self.add_shapes_to_scene(snapshot)
+        
+        self.save_labels()
+        self.calculate_and_display_dimensions(None)
+        self.status_bar.showMessage("Son işlem geri alındı.")
 
     def load_labels(self):
         if not hasattr(self, 'current_image_path') or not self.dataset_dir:
@@ -460,7 +506,10 @@ class MainWindow(QMainWindow):
         if "shapes" not in data:
             return
             
-        for shape in data["shapes"]:
+        self.add_shapes_to_scene(data["shapes"])
+
+    def add_shapes_to_scene(self, shapes):
+        for shape in shapes:
             cname = shape.get("label", "Unknown")
             shape_type = shape.get("shape_type", "polygon")
             points = shape.get("points", [])

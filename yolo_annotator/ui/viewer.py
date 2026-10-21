@@ -39,6 +39,9 @@ class Viewer(QGraphicsView):
         self.box_start_pt = None
         self.temp_box_item = None
         
+        # Kopyala / Yapıştır (görsel değişse de korunur)
+        self.copied_box = None  # {'w': float, 'h': float, 'class_name': str, 'x': float, 'y': float}
+        
         # Crosshair
         pen = QPen(Qt.white, 0, Qt.DashLine)
         self.crosshair_v = self.scene.addLine(0,0,0,0, pen)
@@ -52,6 +55,8 @@ class Viewer(QGraphicsView):
         self.on_right_click_item = None
         self.on_selection_changed = None
         self.on_drawing_progress = None
+        self.on_undo = None
+        self.on_gesture_end = None
         
         self.scene.selectionChanged.connect(self.handle_selection_changed)
 
@@ -182,6 +187,9 @@ class Viewer(QGraphicsView):
             return
             
         super().mouseReleaseEvent(event)
+        
+        if event.button() == Qt.LeftButton and self.mode == 'edit' and self.on_gesture_end:
+            self.on_gesture_end()
 
     def leaveEvent(self, event):
         self.crosshair_v.hide()
@@ -340,11 +348,64 @@ class Viewer(QGraphicsView):
         if self.on_drawing_progress:
             self.on_drawing_progress(None)
 
+    def copy_selected_box(self):
+        for item in self.scene.selectedItems():
+            if isinstance(item, BoxAnnotation):
+                r = item.mapRectToScene(item.rect())
+                self.copied_box = {
+                    'w': r.width(), 'h': r.height(),
+                    'class_name': item.class_name,
+                    'x': r.x(), 'y': r.y()
+                }
+                return True
+        return False
+
+    def paste_box(self):
+        if not self.copied_box or not self.pixmap_item:
+            return False
+        
+        w = min(self.copied_box['w'], self.img_width)
+        h = min(self.copied_box['h'], self.img_height)
+        
+        cursor_pos = self.viewport().mapFromGlobal(self.cursor().pos())
+        if self.viewport().rect().contains(cursor_pos):
+            c = self.mapToScene(cursor_pos)
+            x, y = c.x() - w / 2, c.y() - h / 2
+        else:
+            x, y = self.copied_box['x'] + 20, self.copied_box['y'] + 20
+        
+        x = max(0, min(self.img_width - w, x))
+        y = max(0, min(self.img_height - h, y))
+        
+        item = BoxAnnotation(QRectF(x, y, w, h), self.copied_box['class_name'],
+                             on_right_click=self.on_right_click_item)
+        self.scene.clearSelection()
+        self.scene.addItem(item)
+        item.setSelected(True)
+        
+        if self.on_scene_changed:
+            self.on_scene_changed()
+        return True
+
     def keyPressEvent(self, event):
+        if self.mode == 'edit' and (event.modifiers() & Qt.ControlModifier):
+            if event.key() == Qt.Key_C:
+                self.copy_selected_box()
+                return
+            if event.key() == Qt.Key_V:
+                self.paste_box()
+                return
+
         if event.key() == Qt.Key_Z and (event.modifiers() & Qt.ControlModifier):
-            if self.mode == 'draw':
+            if self.mode == 'draw' and self.current_points:
                 self.undo_last_point()
                 return
+            if self.mode == 'draw_box' and self.box_start_pt is not None:
+                self.cancel_drawing()
+                return
+            if self.on_undo:
+                self.on_undo()
+            return
 
         if event.key() == Qt.Key_Escape and self.mode in ['draw', 'draw_box']:
             self.cancel_drawing()

@@ -16,12 +16,13 @@ A lightweight, fast, and feature-rich Python annotation tool built with PyQt5. T
   - Drag the vertices of a polygon to reshape it.
   - Right-click any shape to quickly change its class label.
   - Press `Delete` to remove the selected annotation.
+  - Press `Ctrl+C` on a selected bounding box to copy it, then `Ctrl+V` to paste it centered on your mouse cursor (always kept inside the image). Works across images too.
 - **Real-World Dimension Calculator:** 
   - Open the **⚙️ Kamera Ayarları (Camera Settings)** from the toolbar to input your camera's Height, FOV, and Resolution. 
   - The status bar at the bottom will **live-calculate** the real-world dimensions (in cm) and pixel size (in px) of your shape while you are drawing or selecting it!
 - **Crosshair Guides:** Full-screen vertical and horizontal crosshairs that follow your mouse cursor to help with precise point alignment.
 - **Auto-Fit & Easy Navigation:** Every new image automatically scales to fit your screen perfectly. Easily pan around large images using convenient scroll shortcuts. Navigate seamlessly with `A` (Prev) and `D` (Next) keys.
-- **Undo Support:** Press `Ctrl+Z` to undo the last drawn point while creating a polygon.
+- **Undo Support:** Press `Ctrl+Z` to undo the last drawn point while creating a polygon (or cancel a bounding box you are still drawing). Otherwise it reverts your last annotation action on the current image: drawing, moving, resizing, class change, delete or paste (up to 100 steps).
 - **Safe Deletion:** Click the Trash icon in the toolbar to safely delete an image **and** its corresponding `.json` label file from your disk. Doing so will instantly re-scan your dataset and automatically remove any classes that are no longer in use, keeping your workspace perfectly clean.
 - **Built-in Auto-Updater:** Easily stay up to date with the latest features and bug fixes. Click the "🔄 Güncelle" (Update) button in the toolbar to automatically fetch and apply the latest version directly from GitHub!
 
@@ -59,8 +60,10 @@ pip install PyQt5
 | `E` | Switch to Edit Mode |
 | `A` | Previous Image |
 | `D` | Next Image |
-| `Ctrl + Z` | Undo the last point (While drawing a polygon) |
+| `Ctrl + Z` | Undo the last point while drawing; otherwise undo the last annotation action |
 | `Delete` | Delete the selected annotation (In Edit Mode) |
+| `Ctrl + C` | Copy the selected bounding box (In Edit Mode) |
+| `Ctrl + V` | Paste the copied bounding box at the mouse cursor (In Edit Mode) |
 | `Right Click` | Change the class of the clicked annotation (In Edit Mode) |
 | `Esc` | Cancel current drawing |
 | **Middle Scroll Wheel** | Zoom In / Out |
