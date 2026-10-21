@@ -1,6 +1,26 @@
 from PyQt5.QtWidgets import QDialog, QVBoxLayout, QHBoxLayout, QComboBox, QLabel, QPushButton, QLineEdit, QMessageBox
+from PyQt5.QtCore import Qt, QEvent
 
-class ClassSelectionDialog(QDialog):
+class _EnterDefaultMixin:
+    """Enter tuşu 'Tamam' düğmesini tetikler; ad kutusu doluyken Enter sınıfı ekler."""
+    def setup_enter_behavior(self):
+        for btn in (self.add_btn, self.cancel_btn):
+            btn.setAutoDefault(False)
+            btn.setDefault(False)
+        self.ok_btn.setAutoDefault(True)
+        self.ok_btn.setDefault(True)
+        self.name_input.installEventFilter(self)
+        self.combo.setFocus()
+
+    def eventFilter(self, obj, event):
+        if (obj is self.name_input and event.type() == QEvent.KeyPress
+                and event.key() in (Qt.Key_Return, Qt.Key_Enter)
+                and self.name_input.text().strip()):
+            self.add_class()
+            return True
+        return super().eventFilter(obj, event)
+
+class ClassSelectionDialog(_EnterDefaultMixin, QDialog):
     def __init__(self, classes, last_used_class=None, parent=None):
         super().__init__(parent)
         self.classes = classes
@@ -38,6 +58,7 @@ class ClassSelectionDialog(QDialog):
         layout.addLayout(btn_layout)
         
         self.setLayout(layout)
+        self.setup_enter_behavior()
         
     def update_combo(self):
         self.combo.clear()
@@ -77,7 +98,7 @@ class ClassSelectionDialog(QDialog):
         return self.combo.currentData()
 
 
-class ClassChangeDialog(QDialog):
+class ClassChangeDialog(_EnterDefaultMixin, QDialog):
     def __init__(self, current_cname, classes, parent=None):
         super().__init__(parent)
         self.classes = classes
@@ -119,6 +140,7 @@ class ClassChangeDialog(QDialog):
         layout.addLayout(btn_layout)
         
         self.setLayout(layout)
+        self.setup_enter_behavior()
 
     def update_combo(self):
         self.combo.clear()
