@@ -306,8 +306,16 @@ class MainWindow(QMainWindow):
         QTimer.singleShot(50, self.fit_window)
         
         file_name = os.path.basename(path)
-        self.setWindowTitle(f"Labelsoft - {file_name} ({self.current_image_idx+1}/{len(self.image_files)})")
         
+        self.packet_number = self.dataset_dir.find("paket")
+        self.packet_name = self.dataset_dir[self.packet_number:]
+
+        if self.packet_number == -1:
+            self.setWindowTitle(f"Labelsoft - {file_name} ({self.current_image_idx+1}/{len(self.image_files)})")
+        
+        else:
+            self.setWindowTitle(f"Labelsoft - {self.packet_name} - {file_name} ({self.current_image_idx+1}/{len(self.image_files)})")
+    
     def prev_image(self):
         if self.image_files and self.current_image_idx > 0:
             self.current_image_idx -= 1
